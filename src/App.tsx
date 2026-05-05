@@ -54,13 +54,13 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="game-stage" aria-label="Phase 2 movement">
+      <section className="game-stage" aria-label="Phase 3 map rendering">
         <div className="viewport" ref={frameRef}>
           <canvas ref={canvasRef} />
           <div className="hud-panel">
             <span className={`status-dot ${status.mode}`} aria-hidden="true" />
             <div>
-              <p className="eyebrow">Phase 2</p>
+              <p className="eyebrow">Phase 3</p>
               <h1>
                 {status.loaded === status.total
                   ? `${status.selectedHero} ${status.selectedState}`

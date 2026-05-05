@@ -78,6 +78,8 @@ For now, the game ships with **2 heroes** only. Each hero has:
 
 > Goal: Build the arena the characters inhabit.
 
+Implementation note: Phase 3 currently uses `public/assets/models/map/model.glb` as the arena and static prop source.
+
 ### M7 — Flat tilemap arena
 - Create a ground plane mesh or render a grid of tiles
 - Switch camera to top-down isometric rig (45° pitch, fixed zoom)

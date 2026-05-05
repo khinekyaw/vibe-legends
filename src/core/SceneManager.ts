@@ -27,6 +27,10 @@ const HERO_ASSETS = [
   },
 ] as const
 
+const MAP_MODEL_URL = '/assets/models/map/model.glb'
+const MAP_WORLD_SIZE = 88
+const MAP_ROTATION_Y = Math.PI / 2
+const MAP_SURFACE_NAME_HINTS = ['dibiaobake', 'plant', 'zdgrass', 'yewaidibiao', 'hedao']
 type HeroState = 'idle' | 'run' | 'attack' | 'death'
 
 type SceneStatus = {
@@ -50,15 +54,25 @@ type HeroInstance = {
 }
 
 const ATTACK_RETURN_STATES = new Set<HeroState>(['idle', 'run'])
-const HERO_SPEED = 1.7
-const MAP_LIMIT = 2.15
+const HERO_SPEED = MAP_WORLD_SIZE * 0.08
+const MAP_LIMIT = MAP_WORLD_SIZE * 0.48
 const ROTATION_SMOOTHING = 16
 const TARGET_EPSILON = 0.06
 
 export class SceneManager {
   private readonly camera: THREE.PerspectiveCamera
+  private readonly cameraDesiredPosition = new THREE.Vector3()
+  private readonly cameraDesiredTarget = new THREE.Vector3()
+  private readonly cameraOffset = new THREE.Vector3(
+    MAP_WORLD_SIZE * 0.26,
+    MAP_WORLD_SIZE * 0.32,
+    MAP_WORLD_SIZE * 0.28,
+  )
+  private readonly characterGroup = new THREE.Group()
   private readonly clock = new THREE.Clock()
   private readonly controlsTarget = new THREE.Vector3(0, 0.8, 0)
+  private readonly environmentGroup = new THREE.Group()
+  private readonly fallbackGround = new THREE.Group()
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private readonly heroBounds = new THREE.Box3()
   private readonly heroes: HeroInstance[] = []
@@ -84,8 +98,8 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100)
-    this.camera.position.set(3.6, 2.4, 4.4)
+    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
 
     this.setupScene()
@@ -95,6 +109,7 @@ export class SceneManager {
     this.inputManager = new InputManager(this.renderer.domElement)
     window.addEventListener('keydown', this.handleKeyDown)
     this.emitStatus('loading')
+    this.loadMapModel()
     HERO_ASSETS.forEach((asset, index) => this.loadHeroModel(asset, index))
     this.animate()
   }
@@ -121,7 +136,10 @@ export class SceneManager {
   }
 
   private setupScene() {
-    this.scene.fog = new THREE.Fog(0x11151c, 8, 18)
+    this.scene.fog = new THREE.Fog(0x11151c, MAP_WORLD_SIZE * 0.65, MAP_WORLD_SIZE * 1.8)
+    this.environmentGroup.name = 'environment'
+    this.characterGroup.name = 'characters'
+    this.scene.add(this.environmentGroup, this.characterGroup)
 
     const ambientLight = new THREE.AmbientLight(0xc7d2fe, 1.7)
     this.scene.add(ambientLight)
@@ -137,7 +155,7 @@ export class SceneManager {
     this.scene.add(rimLight)
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(2.7, 64),
+      new THREE.CircleGeometry(MAP_LIMIT, 80),
       new THREE.MeshStandardMaterial({
         color: 0x263242,
         metalness: 0,
@@ -146,11 +164,104 @@ export class SceneManager {
     )
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = true
-    this.scene.add(ground)
+    this.fallbackGround.add(ground)
 
-    const grid = new THREE.GridHelper(6, 12, 0x516070, 0x2c3644)
+    const grid = new THREE.GridHelper(MAP_LIMIT * 2, 18, 0x516070, 0x2c3644)
     grid.position.y = 0.01
-    this.scene.add(grid)
+    this.fallbackGround.add(grid)
+    this.environmentGroup.add(this.fallbackGround)
+  }
+
+  private loadMapModel() {
+    this.loader.load(
+      MAP_MODEL_URL,
+      (gltf) => {
+        const map = gltf.scene
+        map.name = 'map-model'
+        map.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.frustumCulled = false
+            object.receiveShadow = true
+            object.castShadow = false
+          }
+        })
+
+        this.normalizeMap(map)
+        this.environmentGroup.add(map)
+        this.fallbackGround.visible = false
+      },
+      undefined,
+      () => {
+        this.fallbackGround.visible = true
+      },
+    )
+  }
+
+  private normalizeMap(map: THREE.Group) {
+    const box = this.getMainMapLayerBox(map) ?? new THREE.Box3().setFromObject(map)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    const maxDimension = Math.max(size.x, size.z, 0.001)
+    const scale = MAP_WORLD_SIZE / maxDimension
+    const surfaceY = this.getMapSurfaceY(map, box)
+    const centeredOffset = center.clone().multiplyScalar(scale)
+    centeredOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), MAP_ROTATION_Y)
+
+    map.scale.setScalar(scale)
+    map.rotation.y = MAP_ROTATION_Y
+    map.position.set(-centeredOffset.x, -surfaceY * scale, -centeredOffset.z)
+  }
+
+  private getMainMapLayerBox(map: THREE.Group) {
+    const fullBox = new THREE.Box3().setFromObject(map)
+    const fullSize = fullBox.getSize(new THREE.Vector3())
+    const minMainLayerY = fullBox.min.y + fullSize.y * 0.4
+    let bestBox: THREE.Box3 | null = null
+    let bestArea = 0
+
+    map.traverse((object) => {
+      if (object.children.length === 0) {
+        return
+      }
+
+      const box = new THREE.Box3().setFromObject(object)
+      const size = box.getSize(new THREE.Vector3())
+      const area = size.x * size.z
+
+      if (box.min.y >= minMainLayerY && area > bestArea) {
+        bestBox = box
+        bestArea = area
+      }
+    })
+
+    return bestBox
+  }
+
+  private getMapSurfaceY(map: THREE.Group, mainLayerBox: THREE.Box3) {
+    let surfaceY = mainLayerBox.min.y
+
+    map.traverse((object) => {
+      const name = object.name.toLowerCase()
+      const isSurface = MAP_SURFACE_NAME_HINTS.some((hint) => name.includes(hint))
+
+      if (!isSurface) {
+        return
+      }
+
+      const box = new THREE.Box3().setFromObject(object)
+      const size = box.getSize(new THREE.Vector3())
+
+      if (
+        box.min.y >= mainLayerBox.min.y &&
+        box.min.y <= mainLayerBox.max.y &&
+        size.x > 2 &&
+        size.z > 2
+      ) {
+        surfaceY = Math.max(surfaceY, box.min.y)
+      }
+    })
+
+    return surfaceY
   }
 
   private loadHeroModel(asset: (typeof HERO_ASSETS)[number], index: number) {
@@ -174,7 +285,7 @@ export class SceneManager {
         hero.add(visual)
         this.normalizeHero(hero)
         hero.position.copy(asset.position)
-        this.scene.add(hero)
+        this.characterGroup.add(hero)
 
         const heroInstance = this.createHeroInstance(asset, hero, model, gltf.animations)
         this.heroes[index] = heroInstance
@@ -186,7 +297,7 @@ export class SceneManager {
       () => {
         const hero = this.createPlaceholderHero(asset.name)
         hero.position.copy(asset.position)
-        this.scene.add(hero)
+        this.characterGroup.add(hero)
         this.heroes[index] = {
           actions: {},
           anchor: asset.position.clone(),
@@ -335,6 +446,7 @@ export class SceneManager {
       hero.mixer?.update(delta)
       this.pinHeroToAnchor(hero)
     })
+    this.updateCamera(delta)
 
     this.renderer.render(this.scene, this.camera)
     this.animationFrame = requestAnimationFrame(this.animate)
@@ -345,6 +457,22 @@ export class SceneManager {
     hero.group.position.x = hero.anchor.x
     hero.group.position.y -= this.heroBounds.min.y
     hero.group.position.z = hero.anchor.z
+  }
+
+  private updateCamera(delta: number) {
+    const selectedHero = this.heroes[this.selectedHeroIndex]
+
+    if (selectedHero) {
+      this.cameraDesiredTarget.copy(selectedHero.anchor)
+    } else {
+      this.cameraDesiredTarget.set(0, 0, 0)
+    }
+
+    this.cameraDesiredTarget.y = 0.75
+    this.controlsTarget.lerp(this.cameraDesiredTarget, 1 - Math.exp(-6 * delta))
+    this.cameraDesiredPosition.copy(this.controlsTarget).add(this.cameraOffset)
+    this.camera.position.lerp(this.cameraDesiredPosition, 1 - Math.exp(-5 * delta))
+    this.camera.lookAt(this.controlsTarget)
   }
 
   private updateControlledHero(delta: number) {
