@@ -43,7 +43,7 @@ Acceptable fallback behavior:
 
 Example:
 
-> I need the hero GLB model and its `idle`, `run`, `attack`, and `death` animation clips for this step. Please add them under `src/assets/models/hero1/`, or tell me to continue with placeholders.
+> I need the hero GLB model and its `idle`, `run`, `attack`, and `death` animation clips for this step. Please add them under `public/assets/models/hero-name/`, or tell me to continue with placeholders.
 
 ## Implementation Notes
 
@@ -52,6 +52,14 @@ Example:
 - Add debug helpers for scale, orientation, colliders, and animation state when useful.
 - For missing art or audio, prefer placeholder systems over blocking unrelated logic.
 - Avoid committing large binary assets unless the user explicitly supplies or approves them.
+
+## UI Copy Guidelines
+
+- Keep new UI concise and game-like.
+- Do not overexplain features, implementation details, keyboard shortcuts, asset status, or internal milestone notes inside the app UI.
+- Prefer short labels, compact status text, icons, HUD elements, and tooltips over paragraphs.
+- Only show explanatory text when it directly helps the player take an action.
+- Put longer implementation notes, asset requests, and setup details in docs or agent replies, not on-screen UI.
 
 ## Verification
 
