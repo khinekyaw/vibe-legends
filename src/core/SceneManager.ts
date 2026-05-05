@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { InputManager } from './InputManager'
 
 const HERO_ASSETS = [
   {
@@ -42,18 +43,29 @@ type HeroInstance = {
   currentAction: THREE.AnimationAction | null
   currentState: HeroState
   group: THREE.Group
+  facingAngle: number
   mixer: THREE.AnimationMixer | null
+  moveTarget: THREE.Vector3 | null
   name: string
 }
+
+const ATTACK_RETURN_STATES = new Set<HeroState>(['idle', 'run'])
+const HERO_SPEED = 1.7
+const MAP_LIMIT = 2.15
+const ROTATION_SMOOTHING = 16
+const TARGET_EPSILON = 0.06
 
 export class SceneManager {
   private readonly camera: THREE.PerspectiveCamera
   private readonly clock = new THREE.Clock()
   private readonly controlsTarget = new THREE.Vector3(0, 0.8, 0)
+  private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private readonly heroBounds = new THREE.Box3()
-  private readonly heroCenter = new THREE.Vector3()
   private readonly heroes: HeroInstance[] = []
+  private readonly pointer = new THREE.Vector2()
+  private readonly raycaster = new THREE.Raycaster()
   private readonly loader = new GLTFLoader()
+  private inputManager: InputManager | null = null
   private readonly renderer: THREE.WebGLRenderer
   private readonly scene = new THREE.Scene()
   private animationFrame = 0
@@ -80,14 +92,16 @@ export class SceneManager {
   }
 
   start() {
+    this.inputManager = new InputManager(this.renderer.domElement)
     window.addEventListener('keydown', this.handleKeyDown)
     this.emitStatus('loading')
-    HERO_ASSETS.forEach((asset) => this.loadHeroModel(asset))
+    HERO_ASSETS.forEach((asset, index) => this.loadHeroModel(asset, index))
     this.animate()
   }
 
   dispose() {
     cancelAnimationFrame(this.animationFrame)
+    this.inputManager?.dispose()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
@@ -139,7 +153,7 @@ export class SceneManager {
     this.scene.add(grid)
   }
 
-  private loadHeroModel(asset: (typeof HERO_ASSETS)[number]) {
+  private loadHeroModel(asset: (typeof HERO_ASSETS)[number], index: number) {
     this.loader.load(
       asset.url,
       (gltf) => {
@@ -163,7 +177,7 @@ export class SceneManager {
         this.scene.add(hero)
 
         const heroInstance = this.createHeroInstance(asset, hero, model, gltf.animations)
-        this.heroes.push(heroInstance)
+        this.heroes[index] = heroInstance
         this.playHeroState(heroInstance, 'idle', 0)
         this.loadedHeroes += 1
         this.emitStatus('model')
@@ -173,15 +187,17 @@ export class SceneManager {
         const hero = this.createPlaceholderHero(asset.name)
         hero.position.copy(asset.position)
         this.scene.add(hero)
-        this.heroes.push({
+        this.heroes[index] = {
           actions: {},
           anchor: asset.position.clone(),
           currentAction: null,
           currentState: 'idle',
+          facingAngle: Math.PI,
           group: hero,
           mixer: null,
+          moveTarget: null,
           name: asset.name,
-        })
+        }
         this.loadedHeroes += 1
         this.emitStatus('placeholder')
       },
@@ -193,14 +209,30 @@ export class SceneManager {
     const size = box.getSize(new THREE.Vector3())
     const visual = hero.children[0]
     const model = visual.children[0] ?? visual
-    const center = box.getCenter(new THREE.Vector3())
+    const pivot = this.getHeroPivot(hero) ?? box.getCenter(new THREE.Vector3())
     const maxDimension = Math.max(size.x, size.y, size.z, 0.001)
 
-    model.position.x -= center.x
+    model.position.x -= pivot.x
     model.position.y -= box.min.y
-    model.position.z -= center.z
+    model.position.z -= pivot.z
     hero.scale.setScalar(1.45 / maxDimension)
     hero.rotation.y = Math.PI
+  }
+
+  private getHeroPivot(hero: THREE.Group) {
+    hero.updateMatrixWorld(true)
+    const pivot = new THREE.Vector3()
+    const pivotObject =
+      hero.getObjectByName('Bip001_00') ??
+      hero.getObjectByName('Bip001_01') ??
+      hero.getObjectByName('Bip001 Pelvis_02')
+
+    if (!pivotObject) {
+      return null
+    }
+
+    pivotObject.getWorldPosition(pivot)
+    return pivot
   }
 
   private createHeroInstance(
@@ -221,14 +253,16 @@ export class SceneManager {
       anchor: asset.position.clone(),
       currentAction: null,
       currentState: 'idle',
+      facingAngle: Math.PI,
       group,
       mixer,
+      moveTarget: null,
       name: asset.name,
     }
 
     mixer.addEventListener('finished', (event) => {
       if (hero.currentState === 'attack' && event.action === hero.actions.attack) {
-        this.playHeroState(hero, 'idle')
+        this.playHeroState(hero, this.getMovementState(hero))
       }
     })
 
@@ -296,6 +330,7 @@ export class SceneManager {
 
   private animate = () => {
     const delta = this.clock.getDelta()
+    this.updateControlledHero(delta)
     this.heroes.forEach((hero) => {
       hero.mixer?.update(delta)
       this.pinHeroToAnchor(hero)
@@ -307,10 +342,96 @@ export class SceneManager {
 
   private pinHeroToAnchor(hero: HeroInstance) {
     this.heroBounds.setFromObject(hero.group)
-    this.heroBounds.getCenter(this.heroCenter)
-    hero.group.position.x += hero.anchor.x - this.heroCenter.x
+    hero.group.position.x = hero.anchor.x
     hero.group.position.y -= this.heroBounds.min.y
-    hero.group.position.z += hero.anchor.z - this.heroCenter.z
+    hero.group.position.z = hero.anchor.z
+  }
+
+  private updateControlledHero(delta: number) {
+    const hero = this.heroes[this.selectedHeroIndex]
+
+    if (!hero || hero.currentState === 'death') {
+      return
+    }
+
+    if (this.inputManager?.getAttackCommand()) {
+      hero.moveTarget = null
+      this.playHeroState(hero, 'attack')
+      return
+    }
+
+    this.updatePointerTarget(hero)
+    const inputVector = this.inputManager?.getMovementVector() ?? new THREE.Vector2()
+    const keyboardDirection = new THREE.Vector3(inputVector.x, 0, -inputVector.y)
+
+    if (keyboardDirection.lengthSq() > 0) {
+      keyboardDirection.normalize()
+      hero.moveTarget = null
+      this.moveHero(hero, keyboardDirection, delta)
+      return
+    }
+
+    if (hero.moveTarget) {
+      const targetDirection = hero.moveTarget.clone().sub(hero.anchor)
+      targetDirection.y = 0
+
+      if (targetDirection.length() <= TARGET_EPSILON) {
+        hero.moveTarget = null
+        this.playHeroState(hero, 'idle')
+        return
+      }
+
+      targetDirection.normalize()
+      this.moveHero(hero, targetDirection, delta)
+      return
+    }
+
+    if (hero.currentState === 'run') {
+      this.playHeroState(hero, 'idle')
+    }
+  }
+
+  private updatePointerTarget(hero: HeroInstance) {
+    const pointerCommand = this.inputManager?.consumePointerCommand()
+
+    if (!pointerCommand) {
+      return
+    }
+
+    this.pointer.set(pointerCommand.x, pointerCommand.y)
+    this.raycaster.setFromCamera(this.pointer, this.camera)
+
+    const target = new THREE.Vector3()
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, target)) {
+      target.x = THREE.MathUtils.clamp(target.x, -MAP_LIMIT, MAP_LIMIT)
+      target.z = THREE.MathUtils.clamp(target.z, -MAP_LIMIT, MAP_LIMIT)
+      target.y = 0
+      hero.moveTarget = target
+    }
+  }
+
+  private moveHero(hero: HeroInstance, direction: THREE.Vector3, delta: number) {
+    if (!ATTACK_RETURN_STATES.has(hero.currentState)) {
+      return
+    }
+
+    hero.anchor.addScaledVector(direction, HERO_SPEED * delta)
+    hero.anchor.x = THREE.MathUtils.clamp(hero.anchor.x, -MAP_LIMIT, MAP_LIMIT)
+    hero.anchor.z = THREE.MathUtils.clamp(hero.anchor.z, -MAP_LIMIT, MAP_LIMIT)
+    const targetAngle = Math.atan2(direction.x, direction.z)
+    hero.facingAngle = THREE.MathUtils.damp(
+      hero.facingAngle,
+      targetAngle,
+      ROTATION_SMOOTHING,
+      delta,
+    )
+    hero.group.rotation.y = hero.facingAngle
+    this.playHeroState(hero, 'run')
+  }
+
+  private getMovementState(hero: HeroInstance): HeroState {
+    const inputVector = this.inputManager?.getMovementVector() ?? new THREE.Vector2()
+    return inputVector.lengthSq() > 0 || hero.moveTarget ? 'run' : 'idle'
   }
 
   private emitStatus(mode: SceneStatus['mode']) {
@@ -342,10 +463,8 @@ export class SceneManager {
     }
 
     const stateByKey: Partial<Record<string, HeroState>> = {
-      KeyA: 'attack',
-      KeyD: 'death',
+      KeyX: 'death',
       KeyI: 'idle',
-      KeyR: 'run',
     }
     const nextState = stateByKey[event.code]
 

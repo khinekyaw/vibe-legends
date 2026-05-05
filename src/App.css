@@ -1,24 +1,19 @@
 .app-shell {
   min-height: 100svh;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
   background: #10151c;
   color: #e8edf5;
 }
 
 .game-stage {
   min-width: 0;
-  padding: 24px;
+  min-height: 100svh;
 }
 
 .viewport {
   position: relative;
   width: 100%;
-  height: calc(100svh - 130px);
-  min-height: 480px;
+  height: 100svh;
   overflow: hidden;
-  border: 1px solid #2f3a49;
-  border-radius: 8px;
   background: #11151c;
 }
 
@@ -81,36 +76,9 @@
   text-transform: capitalize;
 }
 
-.phase-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 24px;
-  border-top: 1px solid #2f3a49;
-  background: #18212c;
-  text-align: left;
-}
-
-.phase-panel h2 {
-  margin: 0;
-  color: #f7fbff;
-  font-size: 22px;
-  line-height: 1.1;
-  letter-spacing: 0;
-}
-
 @media (max-width: 900px) {
-  .game-stage {
-    padding: 14px;
-  }
-
-  .viewport {
-    height: 72svh;
-    min-height: 360px;
-  }
-
-  .phase-panel {
-    padding: 16px 20px;
+  .hud-panel {
+    left: 12px;
+    bottom: 12px;
   }
 }
