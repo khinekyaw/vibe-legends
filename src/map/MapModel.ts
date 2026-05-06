@@ -4,7 +4,12 @@ import {
   MAP_ROTATION_Y,
   MAP_SURFACE_NAME_HINTS,
   MAP_WORLD_SIZE,
+  WALL_COLLIDER_DEBUG_HEIGHT,
+  WALL_COLLIDER_EXCLUDED_NAME_HINTS,
+  WALL_COLLIDER_INSET,
+  WALL_COLLIDER_NAME_HINTS,
 } from '../core/sceneConfig'
+import type { AabbCollider } from '../systems/CollisionSystem'
 
 export type MapBounds = {
   maxX: number
@@ -55,6 +60,96 @@ export function prepareMapModel(map: THREE.Group) {
   })
 
   return normalizeMap(map)
+}
+
+export function createMapWallColliders(map: THREE.Group): AabbCollider[] {
+  const colliders: AabbCollider[] = []
+  const seen = new Set<string>()
+
+  map.updateMatrixWorld(true)
+  map.traverse((object) => {
+    if (!(object instanceof THREE.Mesh) || !isWallColliderMesh(object)) {
+      return
+    }
+
+    const box = new THREE.Box3().setFromObject(object)
+    const size = box.getSize(new THREE.Vector3())
+
+    if (size.x <= WALL_COLLIDER_INSET * 2 || size.z <= WALL_COLLIDER_INSET * 2) {
+      return
+    }
+
+    const collider: AabbCollider = {
+      id: object.name,
+      maxX: box.max.x - WALL_COLLIDER_INSET,
+      maxZ: box.max.z - WALL_COLLIDER_INSET,
+      minX: box.min.x + WALL_COLLIDER_INSET,
+      minZ: box.min.z + WALL_COLLIDER_INSET,
+    }
+    const key = getColliderKey(collider)
+
+    if (seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    colliders.push(collider)
+  })
+
+  return colliders
+}
+
+export function createWallColliderDebugGroup(colliders: AabbCollider[]) {
+  const debugGroup = new THREE.Group()
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xff1f1f,
+    depthTest: false,
+    depthWrite: false,
+    opacity: 0.26,
+    transparent: true,
+    wireframe: true,
+  })
+
+  debugGroup.name = 'wall-collider-debug'
+  colliders.forEach((collider) => {
+    const width = collider.maxX - collider.minX
+    const depth = collider.maxZ - collider.minZ
+
+    if (width <= 0 || depth <= 0) {
+      return
+    }
+
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(width, WALL_COLLIDER_DEBUG_HEIGHT, depth),
+      material,
+    )
+
+    mesh.name = `${collider.id}-debug`
+    mesh.position.set(
+      collider.minX + width / 2,
+      WALL_COLLIDER_DEBUG_HEIGHT / 2,
+      collider.minZ + depth / 2,
+    )
+    debugGroup.add(mesh)
+  })
+
+  return debugGroup
+}
+
+function isWallColliderMesh(object: THREE.Object3D) {
+  const name = object.name.toLowerCase()
+
+  if (WALL_COLLIDER_EXCLUDED_NAME_HINTS.some((hint) => name.includes(hint))) {
+    return false
+  }
+
+  return WALL_COLLIDER_NAME_HINTS.some((hint) => name.includes(hint))
+}
+
+function getColliderKey(collider: AabbCollider) {
+  return [collider.minX, collider.maxX, collider.minZ, collider.maxZ]
+    .map((value) => Math.round(value * 10))
+    .join(':')
 }
 
 function normalizeMap(map: THREE.Group) {

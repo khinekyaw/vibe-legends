@@ -7,15 +7,22 @@ import {
   type HeroInstance,
 } from '../entities/HeroModel'
 import {
+  createMapWallColliders,
   createDefaultMapBounds,
   createFallbackGround,
+  createWallColliderDebugGroup,
   prepareMapModel,
   type MapBounds,
 } from '../map/MapModel'
+import {
+  resolveAabbCollisions,
+  type AabbCollider,
+} from '../systems/CollisionSystem'
 import { InputManager } from './InputManager'
 import {
   ATTACK_RETURN_STATES,
   HERO_ASSETS,
+  HERO_COLLIDER_HALF_SIZE,
   HERO_SPEED,
   MAP_MODEL_URL,
   MAP_WORLD_SIZE,
@@ -45,6 +52,9 @@ export class SceneManager {
   private readonly heroBounds = new THREE.Box3()
   private readonly heroes: HeroInstance[] = []
   private mapBounds: MapBounds = createDefaultMapBounds()
+  private readonly wallColliders: AabbCollider[] = []
+  private wallColliderDebugGroup: THREE.Group | null = null
+  private wallColliderDebugVisible = true
   private readonly pointer = new THREE.Vector2()
   private readonly raycaster = new THREE.Raycaster()
   private readonly loader = new GLTFLoader()
@@ -67,7 +77,7 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(15, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
 
@@ -132,7 +142,12 @@ export class SceneManager {
       (gltf) => {
         const map = gltf.scene
         this.mapBounds = prepareMapModel(map)
+        this.wallColliders.splice(0, this.wallColliders.length, ...createMapWallColliders(map))
         this.environmentGroup.add(map)
+        this.wallColliderDebugGroup?.removeFromParent()
+        this.wallColliderDebugGroup = createWallColliderDebugGroup(this.wallColliders)
+        this.wallColliderDebugGroup.visible = this.wallColliderDebugVisible
+        this.environmentGroup.add(this.wallColliderDebugGroup)
         this.fallbackGround.visible = false
       },
       undefined,
@@ -276,6 +291,11 @@ export class SceneManager {
     }
 
     hero.anchor.addScaledVector(direction, HERO_SPEED * delta)
+    const collision = resolveAabbCollisions(
+      hero.anchor,
+      HERO_COLLIDER_HALF_SIZE,
+      this.wallColliders,
+    )
     this.clampToMapBounds(hero.anchor)
     const targetAngle = Math.atan2(direction.x, direction.z)
     hero.facingAngle = THREE.MathUtils.damp(
@@ -285,7 +305,7 @@ export class SceneManager {
       delta,
     )
     hero.group.rotation.y = hero.facingAngle
-    this.playHeroState(hero, 'run')
+    this.playHeroState(hero, collision.collided && !hero.moveTarget ? 'idle' : 'run')
   }
 
   private clampToMapBounds(point: THREE.Vector3) {
@@ -317,6 +337,17 @@ export class SceneManager {
     if (event.code === 'Digit1' || event.code === 'Digit2') {
       this.selectedHeroIndex = event.code === 'Digit1' ? 0 : 1
       this.emitStatus('model')
+      return
+    }
+
+    if (event.code === 'F1') {
+      event.preventDefault()
+      this.wallColliderDebugVisible = !this.wallColliderDebugVisible
+
+      if (this.wallColliderDebugGroup) {
+        this.wallColliderDebugGroup.visible = this.wallColliderDebugVisible
+      }
+
       return
     }
 
