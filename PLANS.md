@@ -182,7 +182,14 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 
 > Goal: A complete, playable match loop with visual feedback.
 
-### M17 — Minimap, kill feed, skill HUD
+### M17 — Modular objective structures
+- Skip Phase 6 multiplayer for now and add local objective layout first
+- Add 3 lane towers and 1 base for each side, following the original MOBA three-lane objective pattern
+- Keep structures modular and data-driven so positions, teams, and visuals can be changed when the map changes
+- Use separate placeholder cylinder meshes for now, not the baked towers connected to the map GLB
+- Add simple objective colliders so heroes cannot walk through towers or bases
+
+### M18 — Minimap, kill feed, skill HUD
 - **Minimap**: Canvas 2D overlay in corner, dots for each hero, map outline
 - **Fog of war**: Mask minimap outside your hero's vision radius
 - **Kill feed**: Sliding notification panel (e.g. "Hero A killed Hero B")

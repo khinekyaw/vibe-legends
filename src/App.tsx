@@ -117,7 +117,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="game-stage" aria-label="Phase 5 combat">
+      <section className="game-stage" aria-label="Phase 7 objectives and HUD">
         <div className="viewport" ref={frameRef}>
           <canvas ref={canvasRef} />
           <div className="world-health-layer" aria-hidden="true">
@@ -166,7 +166,7 @@ function App() {
           <div className="hud-panel">
             <span className={`status-dot ${status.mode}`} aria-hidden="true" />
             <div>
-              <p className="eyebrow">Phase 5</p>
+              <p className="eyebrow">Phase 7</p>
               <h1>
                 {status.loaded === status.total
                   ? `${status.selectedHero} ${status.selectedState}`

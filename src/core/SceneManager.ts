@@ -15,6 +15,11 @@ import {
   type MapBounds,
 } from '../map/MapModel'
 import {
+  createObjectiveColliders,
+  createObjectiveStructures,
+  hideBakedMapTowers,
+} from '../map/ObjectiveStructures'
+import {
   resolveAabbCollisions,
   type AabbCollider,
 } from '../systems/CollisionSystem'
@@ -69,6 +74,8 @@ export class SceneManager {
   private rendererHeight = 1
   private rendererWidth = 1
   private mapBounds: MapBounds = createDefaultMapBounds()
+  private readonly objectiveColliders = createObjectiveColliders()
+  private readonly objectiveStructures = createObjectiveStructures()
   private readonly wallColliders: AabbCollider[] = []
   private aliceBloodOrb: { createdAt: number; hero: HeroInstance; position: THREE.Vector3 } | null = null
   private wallColliderDebugGroup: THREE.Group | null = null
@@ -155,7 +162,7 @@ export class SceneManager {
     rimLight.position.set(-4, 3, -2)
     this.scene.add(rimLight)
 
-    this.environmentGroup.add(this.fallbackGround)
+    this.environmentGroup.add(this.fallbackGround, this.objectiveStructures)
   }
 
   private loadMapModel() {
@@ -164,7 +171,13 @@ export class SceneManager {
       (gltf) => {
         const map = gltf.scene
         this.mapBounds = prepareMapModel(map)
-        this.wallColliders.splice(0, this.wallColliders.length, ...createMapWallColliders(map))
+        hideBakedMapTowers(map)
+        this.wallColliders.splice(
+          0,
+          this.wallColliders.length,
+          ...createMapWallColliders(map),
+          ...this.objectiveColliders,
+        )
         this.environmentGroup.add(map)
         this.wallColliderDebugGroup?.removeFromParent()
         this.wallColliderDebugGroup = createWallColliderDebugGroup(this.wallColliders)
