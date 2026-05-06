@@ -1,32 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { SceneManager } from './core/SceneManager'
-
-type SceneMode = 'loading' | 'model' | 'placeholder'
-
-type SceneStatus = {
-  enemyHp: number
-  enemyMaxHp: number
-  healthBars: Array<{
-    hp: number
-    id: string
-    isSelected: boolean
-    maxHp: number
-    name: string
-    showName?: boolean
-    visible: boolean
-    x: number
-    y: number
-  }>
-  loaded: number
-  mode: SceneMode
-  selectedHp: number
-  selectedHero: string
-  selectedMaxHp: number
-  selectedState: 'idle' | 'run' | 'attack' | 'skill1' | 'skill2' | 'skill3' | 'death'
-  skillCooldowns: Record<'skill1' | 'skill2' | 'skill3', number>
-  total: number
-}
+import type { SceneStatus } from './core/sceneConfig'
 
 type SkillSlot = 'skill1' | 'skill2' | 'skill3'
 
@@ -67,21 +42,19 @@ const skillIcons: Record<string, Record<SkillSlot, { alt: string; src: string }>
   },
 }
 
-const statusCopy: Record<SceneMode, string> = {
-  loading: 'Loading',
-  model: 'Ready',
-  placeholder: 'Placeholder',
-}
-
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<SceneStatus>({
     enemyHp: 1200,
+    enemyKills: 0,
     enemyMaxHp: 1200,
     healthBars: [],
     loaded: 0,
+    matchResult: 'playing',
     mode: 'loading',
+    playerKills: 0,
+    respawnSeconds: 0,
     selectedHp: 1200,
     selectedHero: 'Alice',
     selectedMaxHp: 1200,
@@ -122,6 +95,13 @@ function App() {
       <section className="game-stage" aria-label="Phase 7 objectives and HUD">
         <div className="viewport" ref={frameRef}>
           <canvas ref={canvasRef} />
+          <div className="match-scoreboard" aria-label="Kill count">
+            <span>{status.selectedHero}</span>
+            <strong>{status.playerKills}</strong>
+            <span>Kills</span>
+            <strong>{status.enemyKills}</strong>
+            <span>Enemy</span>
+          </div>
           <div className="world-health-layer" aria-hidden="true">
             {status.healthBars.map((bar) => (
               <div
@@ -145,12 +125,14 @@ function App() {
             {skillSlots.map(({ keyLabel, slot }) => {
               const cooldown = status.skillCooldowns[slot]
               const icon = skillIcons[status.selectedHero]?.[slot]
+              const disabled = status.matchResult !== 'playing' || status.respawnSeconds > 0
 
               return (
                 <button
                   aria-label={`${keyLabel} ${icon?.alt ?? slot}`}
                   className="skill-button"
                   data-ready={cooldown <= 0}
+                  disabled={disabled}
                   key={slot}
                   onClick={() => dispatchSkillCommand(slot)}
                   type="button"
@@ -167,34 +149,38 @@ function App() {
               )
             })}
           </div>
-          <div className="hud-panel">
-            <span className={`status-dot ${status.mode}`} aria-hidden="true" />
-            <div>
-              <p className="eyebrow">Phase 7</p>
-              <h1>
-                {status.loaded === status.total
-                  ? `${status.selectedHero} ${status.selectedState}`
-                  : statusCopy.loading}
-              </h1>
-              <div className="combat-bars" aria-label="Combat status">
-                <span>{Math.max(0, status.selectedHp)} HP</span>
-                <span>{Math.max(0, status.enemyHp)} enemy</span>
-              </div>
-              <div className="skill-row" aria-label="Skill cooldowns">
-                <span>Q {formatCooldown(status.skillCooldowns.skill1)}</span>
-                <span>E {formatCooldown(status.skillCooldowns.skill2)}</span>
-                <span>R {formatCooldown(status.skillCooldowns.skill3)}</span>
+          <div className="hero-hud" aria-label="Player HUD">
+            <div className="hero-hud-top">
+              <strong>{status.selectedHero}</strong>
+              <span>
+                {Math.max(0, status.selectedHp)} / {status.selectedMaxHp}
+              </span>
+            </div>
+            <div className="hud-health-track" aria-hidden="true">
+              <span style={{ width: `${getHpPercent(status.selectedHp, status.selectedMaxHp)}%` }} />
+            </div>
+            <div className="enemy-health">
+              <span>Enemy</span>
+              <strong>
+                {Math.max(0, status.enemyHp)} / {status.enemyMaxHp}
+              </strong>
+            </div>
+            {status.respawnSeconds > 0 && (
+              <div className="respawn-pill">Respawn {Math.ceil(status.respawnSeconds)}</div>
+            )}
+          </div>
+          {status.matchResult !== 'playing' && (
+            <div className={`match-result ${status.matchResult}`} role="status">
+              <div>
+                <strong>{status.matchResult === 'win' ? 'Victory' : 'Defeat'}</strong>
+                <span>Nexus destroyed</span>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </section>
     </main>
   )
-}
-
-function formatCooldown(value: number) {
-  return value <= 0 ? 'Ready' : value.toFixed(0)
 }
 
 function getHpPercent(hp: number, maxHp: number) {

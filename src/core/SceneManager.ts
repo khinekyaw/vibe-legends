@@ -18,7 +18,6 @@ import {
 import {
   BRAWL_MAP_BOUNDS,
   createSimpleBrawlColliders,
-  createSimpleBrawlDebugGroup,
   createSimpleBrawlMap,
 } from '../map/SimpleBrawlMap'
 import {
@@ -39,6 +38,7 @@ import {
   TARGET_EPSILON,
   type HeroAsset,
   type HeroState,
+  type MatchResult,
   type SceneStatus,
 } from './sceneConfig'
 import {
@@ -95,8 +95,6 @@ export class SceneManager {
   private readonly objectiveStructures = createObjectiveStructures()
   private readonly wallColliders: WorldCollider[] = []
   private aliceBloodOrb: { createdAt: number; hero: HeroInstance; position: THREE.Vector3 } | null = null
-  private wallColliderDebugGroup: THREE.Group | null = null
-  private wallColliderDebugVisible = false
   private readonly pointer = new THREE.Vector2()
   private readonly raycaster = new THREE.Raycaster()
   private readonly loader = new GLTFLoader()
@@ -106,8 +104,13 @@ export class SceneManager {
   private readonly scene = new THREE.Scene()
   private animationFrame = 0
   private loadedHeroes = 0
+  private matchResult: MatchResult = 'playing'
   private readonly onStatusChange: (status: SceneStatus) => void
-  private selectedHeroIndex = 0
+  private readonly playerHeroIndex = 0
+  private readonly kills: Record<TeamSide, number> = {
+    blue: 0,
+    red: 0,
+  }
 
   constructor(canvas: HTMLCanvasElement, onStatusChange: (status: SceneStatus) => void) {
     this.onStatusChange = onStatusChange
@@ -129,7 +132,6 @@ export class SceneManager {
 
   start() {
     this.inputManager = new InputManager(this.renderer.domElement)
-    window.addEventListener('keydown', this.handleKeyDown)
     window.addEventListener('skill-command', this.handleSkillCommand)
     this.emitStatus('loading')
     this.loadBrawlMap()
@@ -141,7 +143,6 @@ export class SceneManager {
   dispose() {
     cancelAnimationFrame(this.animationFrame)
     this.inputManager?.dispose()
-    window.removeEventListener('keydown', this.handleKeyDown)
     window.removeEventListener('skill-command', this.handleSkillCommand)
     this.scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
@@ -192,10 +193,6 @@ export class SceneManager {
       ...createSimpleBrawlColliders(),
       ...this.objectiveColliders,
     )
-    this.wallColliderDebugGroup?.removeFromParent()
-    this.wallColliderDebugGroup = createSimpleBrawlDebugGroup(this.wallColliders)
-    this.wallColliderDebugGroup.visible = this.wallColliderDebugVisible
-    this.environmentGroup.add(this.wallColliderDebugGroup)
   }
 
   private loadObjectiveModels() {
@@ -256,6 +253,7 @@ export class SceneManager {
         this.characterGroup.add(heroInstance.group)
         this.heroes[index] = heroInstance
         this.heroCombat.set(heroInstance, createHeroCombatState(HERO_MAX_HP))
+        this.placeHeroAtSpawn(heroInstance, index)
         this.playHeroState(heroInstance, 'idle', 0)
         this.loadedHeroes += 1
         this.emitStatus('model')
@@ -266,6 +264,7 @@ export class SceneManager {
         this.characterGroup.add(hero.group)
         this.heroes[index] = hero
         this.heroCombat.set(hero, createHeroCombatState(HERO_MAX_HP))
+        this.placeHeroAtSpawn(hero, index)
         this.loadedHeroes += 1
         this.emitStatus('placeholder')
       },
@@ -303,7 +302,7 @@ export class SceneManager {
   }
 
   private updateCamera(delta: number) {
-    const selectedHero = this.heroes[this.selectedHeroIndex]
+    const selectedHero = this.heroes[this.playerHeroIndex]
 
     if (selectedHero) {
       this.cameraDesiredTarget.copy(selectedHero.anchor)
@@ -318,10 +317,10 @@ export class SceneManager {
   }
 
   private updateControlledHero(delta: number) {
-    const hero = this.heroes[this.selectedHeroIndex]
+    const hero = this.heroes[this.playerHeroIndex]
     const combat = hero ? this.heroCombat.get(hero) : null
 
-    if (!hero || !combat || hero.currentState === 'death') {
+    if (!hero || !combat || hero.currentState === 'death' || this.matchResult !== 'playing') {
       return
     }
 
@@ -427,17 +426,18 @@ export class SceneManager {
   }
 
   private castBasicAttack(hero: HeroInstance) {
-    if (!ATTACK_RETURN_STATES.has(hero.currentState)) {
+    if (!ATTACK_RETURN_STATES.has(hero.currentState) || this.matchResult !== 'playing') {
       return
     }
 
     const kit = HERO_KITS[hero.name]
+    const heroTeam = this.getHeroTeamForHero(hero)
     const enemyHero = this.getEnemyHero(hero)
     const heroTarget =
       enemyHero && isInRadius(hero, enemyHero, kit.attack.range) ? enemyHero : null
     const objectiveTarget = heroTarget
       ? null
-      : this.getAttackableEnemyTower(hero, kit.attack.range)
+      : this.getAttackableEnemyObjective(hero, kit.attack.range)
     const targetPosition = heroTarget?.anchor ?? objectiveTarget?.position
 
     if (targetPosition) {
@@ -453,7 +453,7 @@ export class SceneManager {
         this.combatEffects.createCircle(heroTarget.anchor, 0.72, 0xf5d168, 0.18)
       }
 
-      this.damageHero(heroTarget, kit.attack.damage)
+      this.damageHero(heroTarget, kit.attack.damage, heroTeam)
       return
     }
 
@@ -466,12 +466,12 @@ export class SceneManager {
         this.combatEffects.createCircle(objectiveTarget.position, 0.9, 0xf5d168, 0.18)
       }
 
-      this.damageObjective(objectiveTarget, kit.attack.damage)
+      this.damageObjective(objectiveTarget, kit.attack.damage, heroTeam)
     }
   }
 
   private castSkill(hero: HeroInstance, slot: SkillSlot) {
-    if (!ATTACK_RETURN_STATES.has(hero.currentState)) {
+    if (!ATTACK_RETURN_STATES.has(hero.currentState) || this.matchResult !== 'playing') {
       return false
     }
 
@@ -504,12 +504,13 @@ export class SceneManager {
 
   private castRubySkill(hero: HeroInstance, slot: SkillSlot, now: number) {
     const target = this.getEnemyHero(hero)
+    const heroTeam = this.getHeroTeamForHero(hero)
 
     if (slot === 'skill1') {
       this.combatEffects.createForward(hero, 4.2, 1.45, 0xff4b65, 0.28)
 
       if (target && isInForwardBox(hero, target, 4.2, 1.45)) {
-        this.damageHero(target, 150)
+        this.damageHero(target, 150, heroTeam)
         this.applySlow(target, now + 1)
       }
 
@@ -520,7 +521,7 @@ export class SceneManager {
       this.combatEffects.createCircle(hero.anchor, 2.05, 0xff4b65, 0.35)
 
       if (target && isInRadius(hero, target, 2.05)) {
-        this.damageHero(target, 130)
+        this.damageHero(target, 130, heroTeam)
         this.applyStun(target, now + 0.5)
         this.pullTarget(target, hero.anchor, 0.65)
       }
@@ -531,7 +532,7 @@ export class SceneManager {
     this.combatEffects.createForward(hero, 5.1, 2.35, 0xff203a, 0.42)
 
     if (target && isInForwardBox(hero, target, 5.1, 2.35)) {
-      this.damageHero(target, 260)
+      this.damageHero(target, 260, heroTeam)
       this.applyStun(target, now + 0.5)
       this.pullTarget(target, hero.anchor, 1.35)
     }
@@ -539,6 +540,7 @@ export class SceneManager {
 
   private castAliceSkill(hero: HeroInstance, slot: SkillSlot, now: number) {
     const target = this.getEnemyHero(hero)
+    const heroTeam = this.getHeroTeamForHero(hero)
 
     if (slot === 'skill1') {
       const forward = getHeroForward(hero)
@@ -554,7 +556,7 @@ export class SceneManager {
       this.combatEffects.createCircle(orbPosition, 0.55, 0xb64cff, 2)
 
       if (target && isInForwardBox(hero, target, 4.8, 0.9)) {
-        this.damageHero(target, 170)
+        this.damageHero(target, 170, heroTeam)
       }
 
       return
@@ -564,7 +566,7 @@ export class SceneManager {
       this.combatEffects.createCircle(hero.anchor, 2.15, 0x9b3dff, 0.36)
 
       if (target && isInRadius(hero, target, 2.15)) {
-        this.damageHero(target, 210)
+        this.damageHero(target, 210, heroTeam)
         this.applySlow(target, now + 1)
       }
 
@@ -603,6 +605,10 @@ export class SceneManager {
   }
 
   private updateActiveSkills() {
+    if (this.matchResult !== 'playing') {
+      return
+    }
+
     const now = performance.now() / 1000
 
     this.heroes.forEach((hero) => {
@@ -629,7 +635,7 @@ export class SceneManager {
         this.combatEffects.createCircle(hero.anchor, 2.7, 0x8b1dff, 0.35)
 
         if (target && isInRadius(hero, target, 2.7)) {
-          this.damageHero(target, 330)
+          this.damageHero(target, 330, this.getHeroTeamForHero(hero))
           this.applyImmobilize(target, now + 1)
         }
 
@@ -650,12 +656,7 @@ export class SceneManager {
         return
       }
 
-      combat.hp = combat.maxHp
-      combat.respawnAt = 0
-      combat.skillWindow = null
-      hero.anchor.copy(HERO_ASSETS[index].position)
-      hero.moveTarget = null
-      this.playHeroState(hero, 'idle')
+      this.respawnHero(hero, index)
     })
 
     if (this.aliceBloodOrb && now - this.aliceBloodOrb.createdAt > 2) {
@@ -664,6 +665,10 @@ export class SceneManager {
   }
 
   private updateObjectiveAttacks() {
+    if (this.matchResult !== 'playing') {
+      return
+    }
+
     const now = performance.now() / 1000
 
     OBJECTIVE_LAYOUT.forEach((objective) => {
@@ -691,11 +696,11 @@ export class SceneManager {
         objective.team === 'blue' ? 0x5bdcff : 0xff5368,
         0.22,
       )
-      this.damageHero(target, objective.attackDamage)
+      this.damageHero(target, objective.attackDamage, objective.team)
     })
   }
 
-  private damageHero(target: HeroInstance, amount: number) {
+  private damageHero(target: HeroInstance, amount: number, sourceTeam?: TeamSide) {
     const combat = this.heroCombat.get(target)
 
     if (!combat || combat.hp <= 0) {
@@ -703,24 +708,34 @@ export class SceneManager {
     }
 
     if (applyDamage(combat, amount)) {
-      this.killHero(target)
+      this.killHero(target, sourceTeam)
     }
 
     this.combatEffects.createCircle(target.anchor, 0.72, 0xff2c4a, 0.18)
   }
 
-  private damageObjective(target: ObjectiveDefinition, amount: number) {
+  private damageObjective(target: ObjectiveDefinition, amount: number, sourceTeam?: TeamSide) {
     const combat = this.objectiveCombat.get(target.id)
 
-    if (!combat || combat.hp <= 0) {
+    if (
+      !combat ||
+      combat.hp <= 0 ||
+      this.matchResult !== 'playing' ||
+      sourceTeam === target.team
+    ) {
       return
     }
 
+    const wasDestroyed = combat.hp - amount <= 0
     combat.hp = Math.max(0, combat.hp - amount)
     this.combatEffects.createCircle(target.position, 0.95, 0xff2c4a, 0.18)
+
+    if (wasDestroyed && target.kind === 'base') {
+      this.finishMatch(target.team === this.getPlayerTeam() ? 'lose' : 'win')
+    }
   }
 
-  private killHero(hero: HeroInstance) {
+  private killHero(hero: HeroInstance, sourceTeam?: TeamSide) {
     const combat = this.heroCombat.get(hero)
 
     if (!combat) {
@@ -732,6 +747,10 @@ export class SceneManager {
     combat.skillWindow = null
     hero.moveTarget = null
     this.playHeroState(hero, 'death')
+
+    if (sourceTeam && sourceTeam !== this.getHeroTeamForHero(hero)) {
+      this.kills[sourceTeam] += 1
+    }
   }
 
   private applySlow(hero: HeroInstance, until: number) {
@@ -779,17 +798,15 @@ export class SceneManager {
     })
   }
 
-  private getAttackableEnemyTower(hero: HeroInstance, range: number): ObjectiveDefinition | null {
-    const heroIndex = this.heroes.indexOf(hero)
-    const heroTeam = this.getHeroTeam(heroIndex)
+  private getAttackableEnemyObjective(hero: HeroInstance, range: number): ObjectiveDefinition | null {
+    const heroTeam = this.getHeroTeamForHero(hero)
     let closestDistance = Number.POSITIVE_INFINITY
-    let closestTower: ObjectiveDefinition | null = null
+    let closestObjective: ObjectiveDefinition | null = null
 
     for (const objective of OBJECTIVE_LAYOUT) {
       const combat = this.objectiveCombat.get(objective.id)
 
       if (
-        objective.kind !== 'tower' ||
         objective.team === heroTeam ||
         !combat ||
         combat.hp <= 0
@@ -805,10 +822,10 @@ export class SceneManager {
       }
 
       closestDistance = distance
-      closestTower = objective
+      closestObjective = objective
     }
 
-    return closestTower
+    return closestObjective
   }
 
   private getObjectiveTarget(
@@ -829,6 +846,65 @@ export class SceneManager {
 
   private getHeroTeam(index: number): TeamSide {
     return index === 0 ? 'blue' : 'red'
+  }
+
+  private getHeroTeamForHero(hero: HeroInstance): TeamSide {
+    const index = this.heroes.indexOf(hero)
+    return this.getHeroTeam(index)
+  }
+
+  private getPlayerTeam(): TeamSide {
+    return this.getHeroTeam(this.playerHeroIndex)
+  }
+
+  private getHeroSpawnPosition(index: number) {
+    const team = this.getHeroTeam(index)
+    const base = OBJECTIVE_LAYOUT.find((objective) => (
+      objective.kind === 'base' && objective.team === team
+    ))
+    const spawn = (base?.position ?? HERO_ASSETS[index].position).clone()
+    const laneDirection = team === 'blue' ? 1 : -1
+
+    spawn.x += team === this.getPlayerTeam() ? -1.35 : 1.35
+    spawn.z += laneDirection * 3.2
+    spawn.y = 0
+
+    return spawn
+  }
+
+  private placeHeroAtSpawn(hero: HeroInstance, index: number) {
+    hero.anchor.copy(this.getHeroSpawnPosition(index))
+    hero.moveTarget = null
+    hero.group.position.copy(hero.anchor)
+  }
+
+  private respawnHero(hero: HeroInstance, index: number) {
+    const combat = this.heroCombat.get(hero)
+
+    if (!combat) {
+      return
+    }
+
+    combat.hp = combat.maxHp
+    combat.respawnAt = 0
+    combat.skillWindow = null
+    combat.slowUntil = 0
+    combat.stunnedUntil = 0
+    combat.immobilizedUntil = 0
+    this.placeHeroAtSpawn(hero, index)
+    this.playHeroState(hero, 'idle')
+  }
+
+  private finishMatch(result: Exclude<MatchResult, 'playing'>) {
+    if (this.matchResult !== 'playing') {
+      return
+    }
+
+    this.matchResult = result
+    this.heroes.forEach((hero) => {
+      hero.moveTarget = null
+      this.playHeroState(hero, this.heroCombat.get(hero)?.hp ? 'idle' : 'death')
+    })
   }
 
   private faceTarget(hero: HeroInstance, target: THREE.Vector3) {
@@ -855,21 +931,23 @@ export class SceneManager {
 
   private emitStatus(mode: SceneStatus['mode']) {
     const now = performance.now()
-    const selectedHero = this.heroes[this.selectedHeroIndex]
+    const selectedHero = this.heroes[this.playerHeroIndex]
     const enemyHero = selectedHero
       ? this.heroes.find((candidate) => candidate && candidate !== selectedHero)
       : undefined
     const selectedCombat = selectedHero ? this.heroCombat.get(selectedHero) : undefined
     const enemyCombat = enemyHero ? this.heroCombat.get(enemyHero) : undefined
     const nowSeconds = now / 1000
+    const respawnSeconds = Math.max(0, (selectedCombat?.respawnAt ?? 0) - nowSeconds)
 
     this.onStatusChange({
       enemyHp: Math.round(enemyCombat?.hp ?? HERO_MAX_HP),
+      enemyKills: this.kills.red,
       enemyMaxHp: enemyCombat?.maxHp ?? HERO_MAX_HP,
       healthBars: projectWorldHealthBars(
         this.heroes,
         this.heroCombat,
-        this.selectedHeroIndex,
+        this.playerHeroIndex,
         this.camera,
         this.rendererWidth,
         this.rendererHeight,
@@ -883,9 +961,12 @@ export class SceneManager {
         ),
       ),
       loaded: this.loadedHeroes,
+      matchResult: this.matchResult,
       mode,
+      playerKills: this.kills.blue,
+      respawnSeconds,
       selectedHp: Math.round(selectedCombat?.hp ?? HERO_MAX_HP),
-      selectedHero: selectedHero?.name ?? HERO_ASSETS[this.selectedHeroIndex]?.name ?? 'Alice',
+      selectedHero: selectedHero?.name ?? HERO_ASSETS[this.playerHeroIndex]?.name ?? 'Alice',
       selectedMaxHp: selectedCombat?.maxHp ?? HERO_MAX_HP,
       selectedState: selectedHero?.currentState ?? 'idle',
       skillCooldowns: {
@@ -897,50 +978,11 @@ export class SceneManager {
     })
   }
 
-  private readonly handleKeyDown = (event: KeyboardEvent) => {
-    if (event.repeat) {
-      return
-    }
-
-    if (event.code === 'Digit1' || event.code === 'Digit2') {
-      this.selectedHeroIndex = event.code === 'Digit1' ? 0 : 1
-      this.emitStatus('model')
-      return
-    }
-
-    if (event.code === 'F1') {
-      event.preventDefault()
-      this.wallColliderDebugVisible = !this.wallColliderDebugVisible
-
-      if (this.wallColliderDebugGroup) {
-        this.wallColliderDebugGroup.visible = this.wallColliderDebugVisible
-      }
-
-      return
-    }
-
-    const selectedHero = this.heroes[this.selectedHeroIndex]
-
-    if (!selectedHero) {
-      return
-    }
-
-    const stateByKey: Partial<Record<string, HeroState>> = {
-      KeyX: 'death',
-      KeyI: 'idle',
-    }
-    const nextState = stateByKey[event.code]
-
-    if (nextState) {
-      this.playHeroState(selectedHero, nextState)
-    }
-  }
-
   private readonly handleSkillCommand = (event: Event) => {
     const slot = (event as CustomEvent<SkillSlot>).detail
-    const selectedHero = this.heroes[this.selectedHeroIndex]
+    const selectedHero = this.heroes[this.playerHeroIndex]
 
-    if (slot && selectedHero) {
+    if (slot && selectedHero && this.matchResult === 'playing') {
       this.castSkill(selectedHero, slot)
     }
   }

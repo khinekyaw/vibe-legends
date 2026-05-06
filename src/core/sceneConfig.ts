@@ -12,7 +12,7 @@ export const HERO_ASSETS = [
       skill3: 'skill3',
     },
     name: 'Alice',
-    position: new THREE.Vector3(-1.2, 0, -18),
+    position: new THREE.Vector3(-1.35, 0, -29.8),
     url: '/assets/models/alice/model.glb',
   },
   {
@@ -26,7 +26,7 @@ export const HERO_ASSETS = [
       skill3: 'skill3',
     },
     name: 'Ruby',
-    position: new THREE.Vector3(1.2, 0, 18),
+    position: new THREE.Vector3(1.35, 0, 29.8),
     url: '/assets/models/ruby/model.glb',
   },
 ] as const
@@ -62,9 +62,11 @@ export const MAP_SURFACE_NAME_HINTS = [
 export const SKY_COLOR = 0xaedcff
 
 export type HeroState = 'idle' | 'run' | 'attack' | 'skill1' | 'skill2' | 'skill3' | 'death'
+export type MatchResult = 'playing' | 'win' | 'lose'
 
 export type SceneStatus = {
   enemyHp: number
+  enemyKills: number
   enemyMaxHp: number
   healthBars: Array<{
     hp: number
@@ -78,7 +80,10 @@ export type SceneStatus = {
     y: number
   }>
   loaded: number
+  matchResult: MatchResult
   mode: 'loading' | 'model' | 'placeholder'
+  playerKills: number
+  respawnSeconds: number
   selectedHp: number
   selectedHero: string
   selectedMaxHp: number

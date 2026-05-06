@@ -11,11 +11,34 @@
 |---|---|---|
 | Renderer | Three.js | Three.js for 3D |
 | Physics | Rapier.js (WASM) | Fast broad + narrow phase; or hand-roll AABB for early phases |
-| Networking | Socket.io + Node.js | Authoritative server at ~20Hz tick rate |
 | Build tool | Vite | Fast HMR, easy GLTF/asset pipeline |
 | Language | TypeScript | Strongly typed game state = fewer runtime bugs |
 
 ---
+
+## Current Progress
+
+The active prototype is now a **local single-player MOBA lane**. Multiplayer is removed from the active roadmap for now.
+
+Implemented:
+- Three.js scene, camera follow, GLB hero loading, animation state playback, and placeholder fallbacks.
+- Keyboard movement, click-to-move, basic attacks, skills, cooldowns, damage, death, and respawn.
+- Modular Brawl-style single-lane map with floor/wall textures, objective colliders, towers, and nexuses.
+- Player side is blue/left by default. Alice is the fixed player hero.
+- Enemy side is red/right. Ruby spawns at the enemy base and stays idle until simple AI is added.
+- Player and enemy spawn at their own base on game start and after death.
+- Tower and nexus health bars render in world space without objective name labels.
+- Towers and nexuses auto-fire at enemy heroes in range.
+- Player basic attacks can damage enemy towers and the enemy nexus.
+- HUD includes player HP, enemy HP, skill buttons, respawn countdown, kill count, and win/lose overlay.
+- Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
+
+Next:
+- Add simple enemy AI for Ruby: leave base, move down lane, acquire targets, attack heroes/objectives, and retreat or idle when dead/respawning.
+- Add minimap and kill feed polish after enemy AI exists.
+
+Deferred:
+- Multiplayer, matchmaking, authoritative server state, network interpolation, and lag compensation.
 
 ## Characters
 
@@ -158,32 +181,11 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 
 ---
 
-## Phase 6 — Multiplayer (Real-time)
-
-> Goal: Two players in the same match over the network.
-
-### M16 — WebSocket server + authoritative state
-- Set up a Node.js server with Socket.io
-- Server runs a game loop at **~20Hz** (50ms tick)
-- Server holds the authoritative `GameState`: positions, HP, skills, events
-- Clients send **input commands** (not positions) to the server
-- Server broadcasts state snapshots to all clients
-- Clients **interpolate** between received snapshots (render at `now - 100ms`)
-- Implement basic **lag compensation** for hit detection
-
-**Key concepts to implement:**
-- Client-side prediction (apply input immediately, reconcile on server ack)
-- Entity interpolation (smooth movement between server ticks)
-- Room system: 2 players per room, simple matchmaking queue
-
----
-
-## Phase 7 — Polish & HUD
+## Phase 6 — Local Match Loop, Polish & HUD
 
 > Goal: A complete, playable match loop with visual feedback.
 
-### M17 — Modular objective structures
-- Skip Phase 6 multiplayer for now and add local objective layout first
+### M16 — Modular objective structures
 - Replace the complex GLB arena with a simpler Mobile Legends Brawl-style single-lane bridge map
 - Keep floor tiles, side walls, bridge edges, void backdrop, towers, and bases as separate named modules so textures/materials can be swapped later
 - Apply repeating floor and wall textures from `public/assets/images/map`, with one continuous floor mesh and visible side/end wall enclosure matching the collision blockers
@@ -194,13 +196,30 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - Add simple wall/objective colliders so heroes cannot walk through bridge sides, towers, or bases; towers and nexus use smaller circular colliders for smoother movement around them
 - Add world-space objective health bars and local auto-fire behavior when enemy heroes enter tower or nexus range
 
-### M18 — Minimap, kill feed, skill HUD
+### M17 — Local match rules and HUD
+- Lock the local player to the blue/left side and spawn them at the blue base
+- Spawn the enemy at the red base; keep the enemy idle until simple AI is added
+- Respawn both heroes at their own base after death
+- Let heroes damage enemy towers and nexuses
+- End the match when a nexus is destroyed
+- Show Victory or Defeat based on which nexus fell
+- Track player and enemy kill counts
+- **Skill HUD**: Bottom-right skill buttons with icons and cooldown overlays
+- **Player HUD**: Player HP, enemy HP, respawn countdown, and kill count
+- **Match end screen**: Centered win/lose result overlay
+
+### M18 — Simple enemy AI
+- Move Ruby from red base down the lane
+- Prefer attacking the player when in range
+- Attack enemy towers and nexus when no hero target is available
+- Stop acting while dead and resume from red base after respawn
+- Keep behavior deterministic and local-only
+
+### M19 — Minimap and kill feed polish
 - **Minimap**: Canvas 2D overlay in corner, dots for each hero, map outline
 - **Fog of war**: Mask minimap outside your hero's vision radius
 - **Kill feed**: Sliding notification panel (e.g. "Hero A killed Hero B")
-- **Skill HUD**: Bottom-centre bar with portrait, HP bar, skill icons + cooldowns
-- **Respawn timer**: Countdown shown over dead hero's portrait
-- **Match end screen**: First to N kills wins — show result overlay
+- **HUD polish**: Tighten mobile layout, portrait treatment, and objective status
 
 ---
 
@@ -222,17 +241,12 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
     CollisionSystem.ts   # spatial grid + AABB/circle resolution
     CombatSystem.ts      # damage, death, respawn
     AnimationSystem.ts   # drives AnimationMixer per entity
-    NetworkSystem.ts     # socket.io client, snapshot buffer, interpolation
   /map
     MapLoader.ts         # loads tilemap + static props
     Camera.ts            # top-down rig, lerp follow
   /ui
     HUD.ts               # Canvas 2D overlay: HP bars, skills, minimap
     KillFeed.ts
-  /server
-    index.ts             # Node.js + Socket.io server
-    GameRoom.ts          # authoritative game state per room
-    GameLoop.ts          # server-side 20Hz tick
   /assets
     /models              # .glb files for heroes + props
     /textures
@@ -260,7 +274,9 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 | M13 | Basic attack + hitbox | Combat | 🟨 Medium |
 | M14 | Health bar UI + death state | Combat | 🟨 Medium |
 | M15 | 2 unique skills per hero | Combat | 🟧 High |
-| M16 | WebSocket server + multiplayer | Network | 🟥 Very High |
-| M17 | Minimap, kill feed, skill HUD | Polish | 🟧 High |
+| M16 | Modular objective structures | Local Match | 🟧 High |
+| M17 | Local match rules and HUD | Local Match | 🟨 Medium |
+| M18 | Simple enemy AI | Local Match | 🟧 High |
+| M19 | Minimap and kill feed polish | Polish | 🟧 High |
 
 ---
