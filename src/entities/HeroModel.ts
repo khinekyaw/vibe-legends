@@ -79,7 +79,7 @@ export function playHeroState(hero: HeroInstance, state: HeroState, fadeDuration
   nextAction.enabled = true
   nextAction.clampWhenFinished = state === 'death'
 
-  if (state === 'attack' || state === 'death') {
+  if (state === 'attack' || state === 'skill1' || state === 'skill2' || state === 'skill3' || state === 'death') {
     nextAction.setLoop(THREE.LoopOnce, 1)
   } else {
     nextAction.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY)
@@ -150,6 +150,9 @@ function createHeroInstance(
     death: createAction(mixer, animations, asset.clips.death),
     idle: createAction(mixer, animations, asset.clips.idle),
     run: createAction(mixer, animations, asset.clips.run),
+    skill1: createAction(mixer, animations, asset.clips.skill1),
+    skill2: createAction(mixer, animations, asset.clips.skill2),
+    skill3: createAction(mixer, animations, asset.clips.skill3),
   }
   const hero: HeroInstance = {
     actions,
@@ -164,7 +167,12 @@ function createHeroInstance(
   }
 
   mixer.addEventListener('finished', (event) => {
-    if (hero.currentState === 'attack' && event.action === hero.actions.attack) {
+    if (
+      (hero.currentState === 'attack' && event.action === hero.actions.attack) ||
+      (hero.currentState === 'skill1' && event.action === hero.actions.skill1) ||
+      (hero.currentState === 'skill2' && event.action === hero.actions.skill2) ||
+      (hero.currentState === 'skill3' && event.action === hero.actions.skill3)
+    ) {
       onAttackFinished(hero)
     }
   })

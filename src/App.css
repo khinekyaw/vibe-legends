@@ -76,6 +76,25 @@
   text-transform: capitalize;
 }
 
+.combat-bars,
+.skill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+  color: #d7e6f2;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.combat-bars span,
+.skill-row span {
+  padding: 5px 7px;
+  border: 1px solid rgba(174, 197, 229, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 @media (max-width: 900px) {
   .hud-panel {
     left: 12px;

@@ -5,6 +5,8 @@ type PointerCommand = {
   y: number
 }
 
+export type SkillCommand = 'skill1' | 'skill2' | 'skill3'
+
 const MOVEMENT_KEYS = {
   ArrowDown: new THREE.Vector2(0, -1),
   ArrowLeft: new THREE.Vector2(-1, 0),
@@ -22,6 +24,7 @@ export class InputManager {
   private readonly pressedKeys = new Set<string>()
   private attackQueued = false
   private pointerCommand: PointerCommand | null = null
+  private skillCommand: SkillCommand | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -66,10 +69,31 @@ export class InputManager {
     return command
   }
 
+  consumeSkillCommand() {
+    const command = this.skillCommand
+    this.skillCommand = null
+    return command
+  }
+
   private readonly handleKeyDown = (event: KeyboardEvent) => {
     if (event.code === 'Space' && !event.repeat) {
       event.preventDefault()
       this.attackQueued = true
+    }
+
+    if (!event.repeat) {
+      const skillByKey: Partial<Record<string, SkillCommand>> = {
+        KeyE: 'skill2',
+        KeyQ: 'skill1',
+        KeyR: 'skill3',
+      }
+
+      const skillCommand = skillByKey[event.code]
+
+      if (skillCommand) {
+        event.preventDefault()
+        this.skillCommand = skillCommand
+      }
     }
 
     this.pressedKeys.add(event.code)

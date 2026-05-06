@@ -7,6 +7,9 @@ export const HERO_ASSETS = [
       death: 'dead',
       idle: 'fight_idle',
       run: 'run',
+      skill1: 'skill1_1',
+      skill2: 'skill2',
+      skill3: 'skill3',
     },
     name: 'Alice',
     position: new THREE.Vector3(-0.75, 0, 0),
@@ -18,6 +21,9 @@ export const HERO_ASSETS = [
       death: 'dead',
       idle: 'fight_idle',
       run: 'run',
+      skill1: 'skill1',
+      skill2: 'skill2',
+      skill3: 'skill3',
     },
     name: 'Ruby',
     position: new THREE.Vector3(0.75, 0, 0),
@@ -56,19 +62,27 @@ export const MAP_SURFACE_NAME_HINTS = [
 ]
 export const SKY_COLOR = 0xaedcff
 
-export type HeroState = 'idle' | 'run' | 'attack' | 'death'
+export type HeroState = 'idle' | 'run' | 'attack' | 'skill1' | 'skill2' | 'skill3' | 'death'
 
 export type SceneStatus = {
+  enemyHp: number
+  enemyMaxHp: number
   loaded: number
   mode: 'loading' | 'model' | 'placeholder'
+  selectedHp: number
   selectedHero: string
+  selectedMaxHp: number
   selectedState: HeroState
+  skillCooldowns: Record<'skill1' | 'skill2' | 'skill3', number>
   total: number
 }
 
 export type HeroAsset = (typeof HERO_ASSETS)[number]
 
 export const ATTACK_RETURN_STATES = new Set<HeroState>(['idle', 'run'])
+export const ACTION_RETURN_STATES = new Set<HeroState>(['attack', 'skill1', 'skill2', 'skill3'])
+export const HERO_MAX_HP = 1200
+export const RESPAWN_DELAY = 5
 export const HERO_SPEED = MAP_WORLD_SIZE * 0.08
 export const MAP_LIMIT = MAP_WORLD_SIZE * 0.48
 export const ROTATION_SMOOTHING = 16

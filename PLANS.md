@@ -136,19 +136,25 @@ Implementation note: Phase 3 currently uses `public/assets/models/map/model.glb`
 - At 0 HP: play `death` animation, remove collider, start respawn timer (e.g. 5s)
 - After respawn: reset HP, re-enable collider, teleport to base
 
-### M15 — 2 unique skills per hero + cooldowns
-- Each hero has a `skills: Skill[]` array (max 2 for now)
+### M15 — Hero skills + cooldowns
+- Each hero has one basic attack and 3 active skills mapped to their available GLB clips
 - `Skill` interface: `{ name, cooldown, range, damage, effect, activate() }`
-- Skills bound to `Q` and `E` keys (or HUD buttons on mobile)
+- Skills bound to `Q`, `E`, and `R` keys (or HUD buttons on mobile)
 - Cooldown shown as a fill-drain overlay on the skill icon in the HUD
 
-**Hero 1 example skills:**
-- Skill 1 (Q): Dash forward 3 units, deal damage on arrival
-- Skill 2 (E): Area-of-effect slam around self
+**Alice prototype kit:**
+- Basic attack: short-range magic hit
+- Skill 1 (Q): Crimson Gleam / Flowing Blood-style blood projectile; recast blinks Alice to the orb
+- Skill 2 (E): Doom Waltz AoE damage with slow
+- Skill 3 (R): Throne of Ruin delayed AoE impact with immobilize
 
-**Hero 2 example skills:**
-- Skill 1 (Q): Fire a projectile in aim direction
-- Skill 2 (E): Place a slow zone on the ground for 3s
+**Ruby prototype kit:**
+- Basic attack: short-range scythe hit
+- Skill 1 (Q): Be Good! forward slash and shockwave with slow
+- Skill 2 (E): Don't Run, Wolf King! AoE stun and pull
+- Skill 3 (R): I'm Offended! forward sweep that pulls and stuns
+
+Implementation note: current Phase 5 combat uses temporary colored geometry for hitboxes/VFX. Replace with supplied skill icons, particles, SFX, and MLBB-like visual assets when available.
 
 ---
 
