@@ -33,7 +33,6 @@ export type HeroKit = {
   attack: {
     damage: number
     range: number
-    width: number
   }
   skills: Record<SkillSlot, SkillDefinition>
 }
@@ -42,8 +41,7 @@ export const HERO_KITS: Record<string, HeroKit> = {
   Alice: {
     attack: {
       damage: 65,
-      range: 1.35,
-      width: 0.95,
+      range: 4.2,
     },
     skills: {
       skill1: {
@@ -69,8 +67,7 @@ export const HERO_KITS: Record<string, HeroKit> = {
   Ruby: {
     attack: {
       damage: 80,
-      range: 1.45,
-      width: 1.05,
+      range: 1.65,
     },
     skills: {
       skill1: {

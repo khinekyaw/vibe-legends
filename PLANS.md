@@ -131,7 +131,7 @@ Implementation note: Phase 3 currently uses `public/assets/models/map/model.glb`
 - On hit: apply damage, play hit particle effect, flash enemy red
 
 ### M14 — Health bar UI + death state
-- Render a world-space health bar above each hero (Canvas 2D overlay or CSS)
+- Render a world-space health bar above each hero's head (CSS overlay projected from 3D)
 - HP bar updates smoothly on damage (lerped bar width)
 - At 0 HP: play `death` animation, remove collider, start respawn timer (e.g. 5s)
 - After respawn: reset HP, re-enable collider, teleport to base
@@ -140,16 +140,16 @@ Implementation note: Phase 3 currently uses `public/assets/models/map/model.glb`
 - Each hero has one basic attack and 3 active skills mapped to their available GLB clips
 - `Skill` interface: `{ name, cooldown, range, damage, effect, activate() }`
 - Skills bound to `Q`, `E`, and `R` keys (or HUD buttons on mobile)
-- Cooldown shown as a fill-drain overlay on the skill icon in the HUD
+- Cooldown shown as an overlay on bottom-right skill image buttons
 
 **Alice prototype kit:**
-- Basic attack: short-range magic hit
+- Basic attack: target-locked ranged magic hit
 - Skill 1 (Q): Crimson Gleam / Flowing Blood-style blood projectile; recast blinks Alice to the orb
 - Skill 2 (E): Doom Waltz AoE damage with slow
 - Skill 3 (R): Throne of Ruin delayed AoE impact with immobilize
 
 **Ruby prototype kit:**
-- Basic attack: short-range scythe hit
+- Basic attack: target-locked short-range scythe hit
 - Skill 1 (Q): Be Good! forward slash and shockwave with slow
 - Skill 2 (E): Don't Run, Wolf King! AoE stun and pull
 - Skill 3 (R): I'm Offended! forward sweep that pulls and stuns

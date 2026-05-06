@@ -45,10 +45,11 @@ import {
   type HeroCombatState,
   type SkillSlot,
 } from '../systems/CombatSystem'
+import { CombatEffects } from '../systems/CombatEffects'
+import { projectWorldHealthBars } from '../ui/WorldHealthBars'
 
 export class SceneManager {
   private readonly camera: THREE.PerspectiveCamera
-  private readonly cameraDesiredPosition = new THREE.Vector3()
   private readonly cameraDesiredTarget = new THREE.Vector3()
   private readonly cameraOffset = new THREE.Vector3(
     MAP_WORLD_SIZE * 0.22,
@@ -64,7 +65,9 @@ export class SceneManager {
   private readonly heroBounds = new THREE.Box3()
   private readonly heroCombat = new Map<HeroInstance, HeroCombatState>()
   private readonly heroes: HeroInstance[] = []
-  private readonly hitEffectGroup = new THREE.Group()
+  private readonly combatEffects = new CombatEffects()
+  private rendererHeight = 1
+  private rendererWidth = 1
   private mapBounds: MapBounds = createDefaultMapBounds()
   private readonly wallColliders: AabbCollider[] = []
   private aliceBloodOrb: { createdAt: number; hero: HeroInstance; position: THREE.Vector3 } | null = null
@@ -79,7 +82,6 @@ export class SceneManager {
   private animationFrame = 0
   private loadedHeroes = 0
   private readonly onStatusChange: (status: SceneStatus) => void
-  private lastStatusEmitAt = 0
   private selectedHeroIndex = 0
 
   constructor(canvas: HTMLCanvasElement, onStatusChange: (status: SceneStatus) => void) {
@@ -103,6 +105,7 @@ export class SceneManager {
   start() {
     this.inputManager = new InputManager(this.renderer.domElement)
     window.addEventListener('keydown', this.handleKeyDown)
+    window.addEventListener('skill-command', this.handleSkillCommand)
     this.emitStatus('loading')
     this.loadMapModel()
     HERO_ASSETS.forEach((asset, index) => this.loadHeroModel(asset, index))
@@ -113,6 +116,7 @@ export class SceneManager {
     cancelAnimationFrame(this.animationFrame)
     this.inputManager?.dispose()
     window.removeEventListener('keydown', this.handleKeyDown)
+    window.removeEventListener('skill-command', this.handleSkillCommand)
     this.scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose()
@@ -128,14 +132,15 @@ export class SceneManager {
     this.camera.aspect = width / safeHeight
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(width, safeHeight, false)
+    this.rendererWidth = width
+    this.rendererHeight = safeHeight
   }
 
   private setupScene() {
     this.scene.fog = new THREE.Fog(SKY_COLOR, MAP_WORLD_SIZE * 0.85, MAP_WORLD_SIZE * 2.1)
     this.environmentGroup.name = 'environment'
     this.characterGroup.name = 'characters'
-    this.hitEffectGroup.name = 'combat-effects'
-    this.scene.add(this.environmentGroup, this.characterGroup, this.hitEffectGroup)
+    this.scene.add(this.environmentGroup, this.characterGroup, this.combatEffects.group)
 
     const ambientLight = new THREE.AmbientLight(0xc7d2fe, 1.7)
     this.scene.add(ambientLight)
@@ -240,8 +245,7 @@ export class SceneManager {
 
     this.cameraDesiredTarget.y = 0.75
     this.controlsTarget.lerp(this.cameraDesiredTarget, 1 - Math.exp(-6 * delta))
-    this.cameraDesiredPosition.copy(this.controlsTarget).add(this.cameraOffset)
-    this.camera.position.lerp(this.cameraDesiredPosition, 1 - Math.exp(-5 * delta))
+    this.camera.position.copy(this.controlsTarget).add(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
   }
 
@@ -362,10 +366,19 @@ export class SceneManager {
     const kit = HERO_KITS[hero.name]
     const target = this.getEnemyHero(hero)
 
-    this.playHeroState(hero, 'attack')
-    this.createForwardEffect(hero, kit.attack.range, kit.attack.width, 0xf5d168, 0.18)
+    if (target && isInRadius(hero, target, kit.attack.range)) {
+      this.faceTarget(hero, target.anchor)
+    }
 
-    if (target && isInForwardBox(hero, target, kit.attack.range, kit.attack.width)) {
+    this.playHeroState(hero, 'attack')
+
+    if (target && isInRadius(hero, target, kit.attack.range)) {
+      if (hero.name === 'Alice') {
+        this.combatEffects.createLine(hero.anchor, target.anchor, 0xb64cff, 0.22)
+      } else {
+        this.combatEffects.createCircle(target.anchor, 0.72, 0xf5d168, 0.18)
+      }
+
       this.damageHero(target, kit.attack.damage)
     }
   }
@@ -406,7 +419,7 @@ export class SceneManager {
     const target = this.getEnemyHero(hero)
 
     if (slot === 'skill1') {
-      this.createForwardEffect(hero, 4.2, 1.45, 0xff4b65, 0.28)
+      this.combatEffects.createForward(hero, 4.2, 1.45, 0xff4b65, 0.28)
 
       if (target && isInForwardBox(hero, target, 4.2, 1.45)) {
         this.damageHero(target, 150)
@@ -417,7 +430,7 @@ export class SceneManager {
     }
 
     if (slot === 'skill2') {
-      this.createCircleEffect(hero.anchor, 2.05, 0xff4b65, 0.35)
+      this.combatEffects.createCircle(hero.anchor, 2.05, 0xff4b65, 0.35)
 
       if (target && isInRadius(hero, target, 2.05)) {
         this.damageHero(target, 130)
@@ -428,7 +441,7 @@ export class SceneManager {
       return
     }
 
-    this.createForwardEffect(hero, 5.1, 2.35, 0xff203a, 0.42)
+    this.combatEffects.createForward(hero, 5.1, 2.35, 0xff203a, 0.42)
 
     if (target && isInForwardBox(hero, target, 5.1, 2.35)) {
       this.damageHero(target, 260)
@@ -450,8 +463,8 @@ export class SceneManager {
         hero,
         position: orbPosition.clone(),
       }
-      this.createForwardEffect(hero, 4.8, 0.9, 0x9b3dff, 0.45)
-      this.createCircleEffect(orbPosition, 0.55, 0xb64cff, 2)
+      this.combatEffects.createForward(hero, 4.8, 0.9, 0x9b3dff, 0.45)
+      this.combatEffects.createCircle(orbPosition, 0.55, 0xb64cff, 2)
 
       if (target && isInForwardBox(hero, target, 4.8, 0.9)) {
         this.damageHero(target, 170)
@@ -461,7 +474,7 @@ export class SceneManager {
     }
 
     if (slot === 'skill2') {
-      this.createCircleEffect(hero.anchor, 2.15, 0x9b3dff, 0.36)
+      this.combatEffects.createCircle(hero.anchor, 2.15, 0x9b3dff, 0.36)
 
       if (target && isInRadius(hero, target, 2.15)) {
         this.damageHero(target, 210)
@@ -472,7 +485,7 @@ export class SceneManager {
     }
 
     const combat = this.heroCombat.get(hero)
-    this.createCircleEffect(hero.anchor, 2.7, 0x8b1dff, 1.5)
+    this.combatEffects.createCircle(hero.anchor, 2.7, 0x8b1dff, 1.5)
 
     if (combat) {
       combat.skillWindow = {
@@ -496,7 +509,7 @@ export class SceneManager {
     resolveAabbCollisions(hero.anchor, HERO_COLLIDER_HALF_SIZE, this.wallColliders)
     this.clampToMapBounds(hero.anchor)
     this.aliceBloodOrb = null
-    this.createCircleEffect(hero.anchor, 1.25, 0xb64cff, 0.25)
+    this.combatEffects.createCircle(hero.anchor, 1.25, 0xb64cff, 0.25)
     this.playHeroState(hero, 'skill1')
 
     return true
@@ -526,7 +539,7 @@ export class SceneManager {
       if (hero.name === 'Alice' && combat.skillWindow.slot === 'skill3') {
         const target = this.getEnemyHero(hero)
 
-        this.createCircleEffect(hero.anchor, 2.7, 0x8b1dff, 0.35)
+        this.combatEffects.createCircle(hero.anchor, 2.7, 0x8b1dff, 0.35)
 
         if (target && isInRadius(hero, target, 2.7)) {
           this.damageHero(target, 330)
@@ -541,15 +554,7 @@ export class SceneManager {
   private updateCombatTimers() {
     const now = performance.now() / 1000
 
-    this.hitEffectGroup.children
-      .filter((object) => object.userData.expiresAt <= now)
-      .forEach((object) => {
-        object.removeFromParent()
-
-        if (object instanceof THREE.Mesh) {
-          object.geometry.dispose()
-        }
-      })
+    this.combatEffects.update(now)
 
     this.heroes.forEach((hero, index) => {
       const combat = this.heroCombat.get(hero)
@@ -582,7 +587,7 @@ export class SceneManager {
       this.killHero(target)
     }
 
-    this.createCircleEffect(target.anchor, 0.72, 0xff2c4a, 0.18)
+    this.combatEffects.createCircle(target.anchor, 0.72, 0xff2c4a, 0.18)
   }
 
   private killHero(hero: HeroInstance) {
@@ -644,45 +649,16 @@ export class SceneManager {
     })
   }
 
-  private createCircleEffect(center: THREE.Vector3, radius: number, color: number, duration: number) {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius, radius, 0.05, 48),
-      new THREE.MeshBasicMaterial({
-        color,
-        depthWrite: false,
-        opacity: 0.34,
-        transparent: true,
-      }),
-    )
+  private faceTarget(hero: HeroInstance, target: THREE.Vector3) {
+    const offset = target.clone().sub(hero.anchor)
+    offset.y = 0
 
-    mesh.position.set(center.x, 0.08, center.z)
-    mesh.userData.expiresAt = performance.now() / 1000 + duration
-    this.hitEffectGroup.add(mesh)
-  }
+    if (offset.lengthSq() === 0) {
+      return
+    }
 
-  private createForwardEffect(
-    hero: HeroInstance,
-    range: number,
-    width: number,
-    color: number,
-    duration: number,
-  ) {
-    const forward = getHeroForward(hero)
-    const center = hero.anchor.clone().addScaledVector(forward, range / 2)
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(width, 0.05, range),
-      new THREE.MeshBasicMaterial({
-        color,
-        depthWrite: false,
-        opacity: 0.34,
-        transparent: true,
-      }),
-    )
-
-    mesh.position.set(center.x, 0.09, center.z)
-    mesh.rotation.y = hero.facingAngle
-    mesh.userData.expiresAt = performance.now() / 1000 + duration
-    this.hitEffectGroup.add(mesh)
+    hero.facingAngle = Math.atan2(offset.x, offset.z)
+    hero.group.rotation.y = hero.facingAngle
   }
 
   private clampToMapBounds(point: THREE.Vector3) {
@@ -697,12 +673,6 @@ export class SceneManager {
 
   private emitStatus(mode: SceneStatus['mode']) {
     const now = performance.now()
-
-    if (mode === 'model' && now - this.lastStatusEmitAt < 220) {
-      return
-    }
-
-    this.lastStatusEmitAt = now
     const selectedHero = this.heroes[this.selectedHeroIndex]
     const enemyHero = selectedHero
       ? this.heroes.find((candidate) => candidate && candidate !== selectedHero)
@@ -714,6 +684,14 @@ export class SceneManager {
     this.onStatusChange({
       enemyHp: Math.round(enemyCombat?.hp ?? HERO_MAX_HP),
       enemyMaxHp: enemyCombat?.maxHp ?? HERO_MAX_HP,
+      healthBars: projectWorldHealthBars(
+        this.heroes,
+        this.heroCombat,
+        this.selectedHeroIndex,
+        this.camera,
+        this.rendererWidth,
+        this.rendererHeight,
+      ),
       loaded: this.loadedHeroes,
       mode,
       selectedHp: Math.round(selectedCombat?.hp ?? HERO_MAX_HP),
@@ -765,6 +743,15 @@ export class SceneManager {
 
     if (nextState) {
       this.playHeroState(selectedHero, nextState)
+    }
+  }
+
+  private readonly handleSkillCommand = (event: Event) => {
+    const slot = (event as CustomEvent<SkillSlot>).detail
+    const selectedHero = this.heroes[this.selectedHeroIndex]
+
+    if (slot && selectedHero) {
+      this.castSkill(selectedHero, slot)
     }
   }
 }

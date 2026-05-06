@@ -67,6 +67,15 @@ export type HeroState = 'idle' | 'run' | 'attack' | 'skill1' | 'skill2' | 'skill
 export type SceneStatus = {
   enemyHp: number
   enemyMaxHp: number
+  healthBars: Array<{
+    hp: number
+    isSelected: boolean
+    maxHp: number
+    name: string
+    visible: boolean
+    x: number
+    y: number
+  }>
   loaded: number
   mode: 'loading' | 'model' | 'placeholder'
   selectedHp: number
