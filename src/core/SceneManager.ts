@@ -872,7 +872,7 @@ export class SceneManager {
       objective.kind === 'base' && objective.team === team
     ))
     const spawn = (base?.position ?? this.heroAssets[index]?.position ?? HERO_ASSETS[index].position).clone()
-    const laneDirection = team === 'blue' ? 1 : -1
+    const laneDirection = team === 'blue' ? -1 : 1
 
     spawn.x += team === this.getPlayerTeam() ? -1.35 : 1.35
     spawn.z += laneDirection * 3.2
@@ -1029,7 +1029,7 @@ export class SceneManager {
     const width = this.mapBounds.maxX - this.mapBounds.minX
     const depth = this.mapBounds.maxZ - this.mapBounds.minZ
     const x = width > 0 ? ((position.x - this.mapBounds.minX) / width) * 100 : 50
-    const y = depth > 0 ? (1 - (position.z - this.mapBounds.minZ) / depth) * 100 : 50
+    const y = depth > 0 ? ((position.z - this.mapBounds.minZ) / depth) * 100 : 50
 
     return {
       x: THREE.MathUtils.clamp(x, 0, 100),

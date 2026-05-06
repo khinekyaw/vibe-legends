@@ -23,19 +23,6 @@ export type ObjectiveDefinition = {
   maxHp: number
 }
 
-const TEAM_COLORS: Record<ObjectiveTeam, { accent: number; body: number; glow: number }> = {
-  blue: {
-    accent: 0x43d5ff,
-    body: 0x2266d8,
-    glow: 0x86edff,
-  },
-  red: {
-    accent: 0xff5368,
-    body: 0xd8344d,
-    glow: 0xffb1bb,
-  },
-}
-
 export const OBJECTIVE_MODEL_URLS: Record<ObjectiveModelKey, string> = {
   nexus: '/assets/models/map/nexus.glb',
   tower1: '/assets/models/map/tower1.glb',
@@ -54,7 +41,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     kind: 'tower',
     lane: 'outer',
     modelKey: 'tower1',
-    position: new THREE.Vector3(0, 0, -20),
+    position: new THREE.Vector3(0, 0, 20),
     team: 'blue',
     visualHeight: 3.2,
     maxHp: 2200,
@@ -70,7 +57,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     kind: 'tower',
     lane: 'inner',
     modelKey: 'tower2',
-    position: new THREE.Vector3(0, 0, -8),
+    position: new THREE.Vector3(0, 0, 8),
     team: 'blue',
     visualHeight: 3.1,
     maxHp: 2400,
@@ -85,7 +72,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     id: 'blue-base',
     kind: 'base',
     modelKey: 'nexus',
-    position: new THREE.Vector3(0, 0, -33),
+    position: new THREE.Vector3(0, 0, 33),
     team: 'blue',
     visualHeight: 2.65,
     maxHp: 3600,
@@ -101,7 +88,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     kind: 'tower',
     lane: 'inner',
     modelKey: 'tower2',
-    position: new THREE.Vector3(0, 0, 8),
+    position: new THREE.Vector3(0, 0, -8),
     team: 'red',
     visualHeight: 3.1,
     maxHp: 2400,
@@ -117,7 +104,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     kind: 'tower',
     lane: 'outer',
     modelKey: 'tower1',
-    position: new THREE.Vector3(0, 0, 20),
+    position: new THREE.Vector3(0, 0, -20),
     team: 'red',
     visualHeight: 3.2,
     maxHp: 2200,
@@ -132,7 +119,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     id: 'red-base',
     kind: 'base',
     modelKey: 'nexus',
-    position: new THREE.Vector3(0, 0, 33),
+    position: new THREE.Vector3(0, 0, -33),
     team: 'red',
     visualHeight: 2.65,
     maxHp: 3600,
@@ -144,7 +131,10 @@ export function createObjectiveStructures(layout = OBJECTIVE_LAYOUT) {
   group.name = 'objective-structures'
 
   layout.forEach((objective) => {
-    group.add(createObjective(objective))
+    const container = new THREE.Group()
+    container.name = objective.id
+    container.position.copy(objective.position)
+    group.add(container)
   })
 
   return group
@@ -193,7 +183,7 @@ export function getObjectiveModelUrl(objective: ObjectiveDefinition) {
 }
 
 export function getObjectiveRotationY(objective: ObjectiveDefinition) {
-  return objective.team === 'red' ? Math.PI : 0
+  return objective.team === 'blue' ? Math.PI : 0
 }
 
 export function createObjectiveModelInstance(
@@ -216,35 +206,6 @@ export function createObjectiveModelInstance(
   return model
 }
 
-function createObjective(objective: ObjectiveDefinition) {
-  const group = new THREE.Group()
-  group.name = objective.id
-  group.position.copy(objective.position)
-
-  const colors = TEAM_COLORS[objective.team]
-
-  if (objective.kind === 'base') {
-    group.add(createCylinder(1.95, 2.2, 0.4, colors.body, 0.42))
-    group.add(createCylinder(1.48, 1.68, 0.62, colors.accent, 0.86))
-    group.add(createCylinder(0.92, 1.06, 1.9, colors.body, 1.92))
-    group.add(createCylinder(0.48, 0.68, 2.45, colors.glow, 3.05))
-  } else {
-    group.add(createCylinder(1.12, 1.32, 0.34, colors.body, 0.34))
-    group.add(createCylinder(0.62, 0.78, 1.42, colors.body, 1.14))
-    group.add(createCylinder(0.78, 0.94, 0.42, colors.accent, 2.05))
-    group.add(createCylinder(0.34, 0.46, 0.58, colors.glow, 2.55))
-  }
-
-  group.traverse((object) => {
-    if (object instanceof THREE.Mesh) {
-      object.castShadow = true
-      object.receiveShadow = true
-    }
-  })
-
-  return group
-}
-
 function normalizeObjectiveModel(model: THREE.Object3D, targetHeight: number) {
   model.updateMatrixWorld(true)
 
@@ -258,24 +219,4 @@ function normalizeObjectiveModel(model: THREE.Object3D, targetHeight: number) {
   const scaledBox = new THREE.Box3().setFromObject(model)
   const center = scaledBox.getCenter(new THREE.Vector3())
   model.position.set(-center.x, -scaledBox.min.y, -center.z)
-}
-
-function createCylinder(
-  radiusTop: number,
-  radiusBottom: number,
-  height: number,
-  color: number,
-  y: number,
-) {
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radiusTop, radiusBottom, height, 32),
-    new THREE.MeshStandardMaterial({
-      color,
-      metalness: 0.08,
-      roughness: 0.46,
-    }),
-  )
-
-  mesh.position.y = y
-  return mesh
 }

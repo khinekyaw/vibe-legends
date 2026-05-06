@@ -8,11 +8,11 @@ type SkillSlot = 'skill1' | 'skill2' | 'skill3'
 const heroChoices = [
   {
     name: 'Alice',
-    portrait: '/assets/images/alice/Crimson_Gleam.webp',
+    portrait: '/assets/images/alice/alice_icon.webp',
   },
   {
     name: 'Ruby',
-    portrait: '/assets/images/ruby/Be_Good.webp',
+    portrait: '/assets/images/ruby/ruby_icon.webp',
   },
 ] as const
 

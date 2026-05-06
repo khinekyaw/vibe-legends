@@ -24,8 +24,8 @@ Implemented:
 - Three.js scene, camera follow, GLB hero loading, animation state playback, and placeholder fallbacks.
 - Keyboard movement, click-to-move, basic attacks, skills, cooldowns, damage, death, and respawn.
 - Modular Brawl-style single-lane map with floor/wall textures, objective colliders, towers, and nexuses.
-- Player side is blue/left by default. The player chooses Alice or Ruby at match start.
-- Enemy side is red/right. The unselected hero spawns at the enemy base and stays idle until simple AI is added.
+- Player side is blue/bottom-left by default. The player chooses Alice or Ruby at match start.
+- Enemy side is red/top-right. The unselected hero spawns at the enemy base and stays idle until simple AI is added.
 - Player and enemy spawn at their own base on game start and after death.
 - Tower and nexus health bars render in world space without objective name labels.
 - Towers and nexuses auto-fire at enemy heroes in range.
@@ -192,13 +192,13 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - Apply repeating floor and wall textures from `public/assets/images/map`, with one continuous floor mesh and visible side/end wall enclosure matching the collision blockers
 - Add 2 lane-aligned towers and 1 base for each side
 - Keep structures modular and data-driven so positions, teams, and visuals can be changed when the map changes
-- Use `tower1.glb`, `tower2.glb`, and `nexus.glb` from `public/assets/models/map` for objective visuals, with cylinder fallbacks if an asset fails to load
+- Use `tower1.glb`, `tower2.glb`, and `nexus.glb` from `public/assets/models/map` for objective visuals; keep objective containers empty until models load
 - Rotate objective models by team side so tower fronts face into the lane instead of reusing one baked orientation
 - Add simple wall/objective colliders so heroes cannot walk through bridge sides, towers, or bases; towers and nexus use smaller circular colliders for smoother movement around them
 - Add world-space objective health bars and local auto-fire behavior when enemy heroes enter tower or nexus range
 
 ### M17 — Local match rules and HUD
-- Lock the local player to the blue/left side and spawn them at the blue base
+- Lock the local player to the blue/bottom-left side and spawn them at the blue base
 - Let the player choose Alice or Ruby before the local match starts
 - Spawn the enemy at the red base; keep the enemy idle until simple AI is added
 - Respawn both heroes at their own base after death
