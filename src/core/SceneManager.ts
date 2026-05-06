@@ -12,6 +12,7 @@ import {
   createObjectiveColliders,
   createObjectiveStructures,
   getObjectiveModelUrl,
+  type ObjectiveDefinition,
   OBJECTIVE_LAYOUT,
 } from '../map/ObjectiveStructures'
 import {
@@ -51,7 +52,13 @@ import {
   type SkillSlot,
 } from '../systems/CombatSystem'
 import { CombatEffects } from '../systems/CombatEffects'
-import { projectWorldHealthBars } from '../ui/WorldHealthBars'
+import {
+  projectObjectiveHealthBars,
+  projectWorldHealthBars,
+  type ObjectiveCombatState,
+} from '../ui/WorldHealthBars'
+
+type TeamSide = 'blue' | 'red'
 
 export class SceneManager {
   private readonly camera: THREE.PerspectiveCamera
@@ -70,6 +77,16 @@ export class SceneManager {
   private readonly heroBounds = new THREE.Box3()
   private readonly heroCombat = new Map<HeroInstance, HeroCombatState>()
   private readonly heroes: HeroInstance[] = []
+  private readonly objectiveCombat = new Map<string, ObjectiveCombatState>(
+    OBJECTIVE_LAYOUT.map((objective) => [
+      objective.id,
+      {
+        hp: objective.maxHp,
+        maxHp: objective.maxHp,
+        nextFireAt: 0,
+      },
+    ]),
+  )
   private readonly combatEffects = new CombatEffects()
   private rendererHeight = 1
   private rendererWidth = 1
@@ -103,7 +120,7 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
 
@@ -264,6 +281,7 @@ export class SceneManager {
   private animate = () => {
     const delta = this.clock.getDelta()
     this.updateCombatTimers()
+    this.updateObjectiveAttacks()
     this.updateControlledHero(delta)
     this.updateActiveSkills()
     this.heroes.forEach((hero) => {
@@ -414,22 +432,41 @@ export class SceneManager {
     }
 
     const kit = HERO_KITS[hero.name]
-    const target = this.getEnemyHero(hero)
+    const enemyHero = this.getEnemyHero(hero)
+    const heroTarget =
+      enemyHero && isInRadius(hero, enemyHero, kit.attack.range) ? enemyHero : null
+    const objectiveTarget = heroTarget
+      ? null
+      : this.getAttackableEnemyTower(hero, kit.attack.range)
+    const targetPosition = heroTarget?.anchor ?? objectiveTarget?.position
 
-    if (target && isInRadius(hero, target, kit.attack.range)) {
-      this.faceTarget(hero, target.anchor)
+    if (targetPosition) {
+      this.faceTarget(hero, targetPosition)
     }
 
     this.playHeroState(hero, 'attack')
 
-    if (target && isInRadius(hero, target, kit.attack.range)) {
+    if (heroTarget) {
       if (hero.name === 'Alice') {
-        this.combatEffects.createLine(hero.anchor, target.anchor, 0xb64cff, 0.22)
+        this.combatEffects.createLine(hero.anchor, heroTarget.anchor, 0xb64cff, 0.22)
       } else {
-        this.combatEffects.createCircle(target.anchor, 0.72, 0xf5d168, 0.18)
+        this.combatEffects.createCircle(heroTarget.anchor, 0.72, 0xf5d168, 0.18)
       }
 
-      this.damageHero(target, kit.attack.damage)
+      this.damageHero(heroTarget, kit.attack.damage)
+      return
+    }
+
+    if (objectiveTarget) {
+      if (hero.name === 'Alice') {
+        const targetPoint = objectiveTarget.position.clone()
+        targetPoint.y = 1.9
+        this.combatEffects.createLine(hero.anchor, targetPoint, 0xb64cff, 0.22)
+      } else {
+        this.combatEffects.createCircle(objectiveTarget.position, 0.9, 0xf5d168, 0.18)
+      }
+
+      this.damageObjective(objectiveTarget, kit.attack.damage)
     }
   }
 
@@ -626,6 +663,38 @@ export class SceneManager {
     }
   }
 
+  private updateObjectiveAttacks() {
+    const now = performance.now() / 1000
+
+    OBJECTIVE_LAYOUT.forEach((objective) => {
+      const objectiveCombat = this.objectiveCombat.get(objective.id)
+
+      if (!objectiveCombat || objectiveCombat.hp <= 0 || objectiveCombat.nextFireAt > now) {
+        return
+      }
+
+      const target = this.getObjectiveTarget(objective.team, objective.position, objective.attackRange)
+
+      if (!target) {
+        return
+      }
+
+      objectiveCombat.nextFireAt = now + objective.attackSeconds
+      const origin = objective.position.clone()
+      origin.y = objective.kind === 'base' ? 2.2 : 2.6
+      const targetPoint = target.anchor.clone()
+      targetPoint.y = 1.15
+
+      this.combatEffects.createLine(
+        origin,
+        targetPoint,
+        objective.team === 'blue' ? 0x5bdcff : 0xff5368,
+        0.22,
+      )
+      this.damageHero(target, objective.attackDamage)
+    })
+  }
+
   private damageHero(target: HeroInstance, amount: number) {
     const combat = this.heroCombat.get(target)
 
@@ -638,6 +707,17 @@ export class SceneManager {
     }
 
     this.combatEffects.createCircle(target.anchor, 0.72, 0xff2c4a, 0.18)
+  }
+
+  private damageObjective(target: ObjectiveDefinition, amount: number) {
+    const combat = this.objectiveCombat.get(target.id)
+
+    if (!combat || combat.hp <= 0) {
+      return
+    }
+
+    combat.hp = Math.max(0, combat.hp - amount)
+    this.combatEffects.createCircle(target.position, 0.95, 0xff2c4a, 0.18)
   }
 
   private killHero(hero: HeroInstance) {
@@ -699,6 +779,58 @@ export class SceneManager {
     })
   }
 
+  private getAttackableEnemyTower(hero: HeroInstance, range: number): ObjectiveDefinition | null {
+    const heroIndex = this.heroes.indexOf(hero)
+    const heroTeam = this.getHeroTeam(heroIndex)
+    let closestDistance = Number.POSITIVE_INFINITY
+    let closestTower: ObjectiveDefinition | null = null
+
+    for (const objective of OBJECTIVE_LAYOUT) {
+      const combat = this.objectiveCombat.get(objective.id)
+
+      if (
+        objective.kind !== 'tower' ||
+        objective.team === heroTeam ||
+        !combat ||
+        combat.hp <= 0
+      ) {
+        continue
+      }
+
+      const hitRadius = objective.colliderRadius ?? objective.colliderHalfSize
+      const distance = hero.anchor.distanceTo(objective.position)
+
+      if (distance > range + hitRadius || distance >= closestDistance) {
+        continue
+      }
+
+      closestDistance = distance
+      closestTower = objective
+    }
+
+    return closestTower
+  }
+
+  private getObjectiveTarget(
+    team: TeamSide,
+    position: THREE.Vector3,
+    range: number,
+  ) {
+    return this.heroes.find((candidate, index) => {
+      const combat = this.heroCombat.get(candidate)
+
+      if (!candidate || !combat || combat.hp <= 0 || this.getHeroTeam(index) === team) {
+        return false
+      }
+
+      return candidate.anchor.distanceTo(position) <= range
+    })
+  }
+
+  private getHeroTeam(index: number): TeamSide {
+    return index === 0 ? 'blue' : 'red'
+  }
+
   private faceTarget(hero: HeroInstance, target: THREE.Vector3) {
     const offset = target.clone().sub(hero.anchor)
     offset.y = 0
@@ -741,6 +873,14 @@ export class SceneManager {
         this.camera,
         this.rendererWidth,
         this.rendererHeight,
+      ).concat(
+        projectObjectiveHealthBars(
+          OBJECTIVE_LAYOUT,
+          this.objectiveCombat,
+          this.camera,
+          this.rendererWidth,
+          this.rendererHeight,
+        ),
       ),
       loaded: this.loadedHeroes,
       mode,

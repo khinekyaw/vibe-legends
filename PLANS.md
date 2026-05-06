@@ -186,11 +186,13 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - Skip Phase 6 multiplayer for now and add local objective layout first
 - Replace the complex GLB arena with a simpler Mobile Legends Brawl-style single-lane bridge map
 - Keep floor tiles, side walls, bridge edges, void backdrop, towers, and bases as separate named modules so textures/materials can be swapped later
+- Apply repeating floor and wall textures from `public/assets/images/map`, with one continuous floor mesh and visible side/end wall enclosure matching the collision blockers
 - Add 2 lane-aligned towers and 1 base for each side
 - Keep structures modular and data-driven so positions, teams, and visuals can be changed when the map changes
 - Use `tower1.glb`, `tower2.glb`, and `nexus.glb` from `public/assets/models/map` for objective visuals, with cylinder fallbacks if an asset fails to load
 - Rotate objective models by team side so tower fronts face into the lane instead of reusing one baked orientation
-- Add simple wall/objective colliders so heroes cannot walk through bridge sides, towers, or bases; towers use smaller circular colliders for smoother movement around them
+- Add simple wall/objective colliders so heroes cannot walk through bridge sides, towers, or bases; towers and nexus use smaller circular colliders for smoother movement around them
+- Add world-space objective health bars and local auto-fire behavior when enemy heroes enter tower or nexus range
 
 ### M18 — Minimap, kill feed, skill HUD
 - **Minimap**: Canvas 2D overlay in corner, dots for each hero, map outline

@@ -68,9 +68,11 @@ export type SceneStatus = {
   enemyMaxHp: number
   healthBars: Array<{
     hp: number
+    id: string
     isSelected: boolean
     maxHp: number
     name: string
+    showName?: boolean
     visible: boolean
     x: number
     y: number

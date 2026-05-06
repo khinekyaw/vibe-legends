@@ -5,8 +5,9 @@ import type { MapBounds } from './MapModel'
 
 const MAP_LENGTH = 78
 const LANE_WIDTH = 14
-const WALL_THICKNESS = 1.45
-const TILE_SIZE = 4
+const WALL_THICKNESS = 1
+const FLOOR_TEXTURE_URL = '/assets/images/map/floor.jpg'
+const WALL_TEXTURE_URL = '/assets/images/map/wall.jpg'
 
 export const BRAWL_MAP_BOUNDS: MapBounds = {
   maxX: LANE_WIDTH / 2,
@@ -16,30 +17,10 @@ export const BRAWL_MAP_BOUNDS: MapBounds = {
 }
 
 const brawlMaterials = {
-  edge: new THREE.MeshStandardMaterial({
-    color: 0x6f8290,
-    metalness: 0,
-    roughness: 0.76,
-  }),
-  floorA: new THREE.MeshStandardMaterial({
-    color: 0xa8b4ae,
-    metalness: 0,
-    roughness: 0.82,
-  }),
-  floorB: new THREE.MeshStandardMaterial({
-    color: 0x8f9d9d,
-    metalness: 0,
-    roughness: 0.86,
-  }),
   void: new THREE.MeshBasicMaterial({
     color: 0x102036,
     transparent: true,
     opacity: 0.95,
-  }),
-  wall: new THREE.MeshStandardMaterial({
-    color: 0x536c7a,
-    metalness: 0.04,
-    roughness: 0.68,
   }),
 }
 
@@ -54,11 +35,11 @@ export function createSimpleBrawlMap() {
   voidPlane.name = 'brawl-void-backdrop'
   voidPlane.rotation.x = -Math.PI / 2
   voidPlane.position.y = -0.09
-  group.add(voidPlane)
+  // group.add(voidPlane)
 
   const floorGroup = new THREE.Group()
-  floorGroup.name = 'brawl-floor-tiles'
-  createFloorTiles(floorGroup)
+  floorGroup.name = 'brawl-floor'
+  floorGroup.add(createFloorMesh())
   group.add(floorGroup)
 
   const edgeGroup = new THREE.Group()
@@ -69,6 +50,7 @@ export function createSimpleBrawlMap() {
   const wallGroup = new THREE.Group()
   wallGroup.name = 'brawl-side-walls'
   createSideWalls(wallGroup)
+  createEndWalls(wallGroup)
   group.add(wallGroup)
 
   group.traverse((object) => {
@@ -165,35 +147,23 @@ export function createSimpleBrawlDebugGroup(colliders: WorldCollider[]) {
   return debugGroup
 }
 
-function createFloorTiles(group: THREE.Group) {
-  const columns = Math.floor(LANE_WIDTH / TILE_SIZE)
-  const rows = Math.floor(MAP_LENGTH / TILE_SIZE)
+function createFloorMesh() {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(LANE_WIDTH, 0.16, MAP_LENGTH),
+    createStandardTextureMaterial(FLOOR_TEXTURE_URL, LANE_WIDTH / 2, MAP_LENGTH / 2),
+  )
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(TILE_SIZE - 0.08, 0.16, TILE_SIZE - 0.08),
-        (row + column) % 2 === 0 ? brawlMaterials.floorA : brawlMaterials.floorB,
-      )
-
-      mesh.name = `brawl-floor-tile-${row}-${column}`
-      mesh.position.set(
-        -LANE_WIDTH / 2 + TILE_SIZE / 2 + column * TILE_SIZE + 1,
-        0,
-        -MAP_LENGTH / 2 + TILE_SIZE / 2 + row * TILE_SIZE + 1,
-      )
-      group.add(mesh)
-    }
-  }
+  mesh.name = 'brawl-floor-plane'
+  return mesh
 }
 
 function createBridgeEdges(group: THREE.Group) {
   const leftEdge = createEdgeMesh('brawl-left-edge')
-  leftEdge.position.x = -LANE_WIDTH / 2 - 0.28
+  leftEdge.position.x = -LANE_WIDTH / 2 - 0.35
   group.add(leftEdge)
 
   const rightEdge = createEdgeMesh('brawl-right-edge')
-  rightEdge.position.x = LANE_WIDTH / 2 + 0.28
+  rightEdge.position.x = LANE_WIDTH / 2 + 0.35
   group.add(rightEdge)
 }
 
@@ -207,10 +177,20 @@ function createSideWalls(group: THREE.Group) {
   group.add(rightWall)
 }
 
+function createEndWalls(group: THREE.Group) {
+  const blueEndWall = createEndWallMesh('brawl-blue-end-wall-visual')
+  blueEndWall.position.z = -MAP_LENGTH / 2 - WALL_THICKNESS / 2
+  group.add(blueEndWall)
+
+  const redEndWall = createEndWallMesh('brawl-red-end-wall-visual')
+  redEndWall.position.z = MAP_LENGTH / 2 + WALL_THICKNESS / 2
+  group.add(redEndWall)
+}
+
 function createEdgeMesh(name: string) {
   const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 0.55, MAP_LENGTH),
-    brawlMaterials.edge,
+    new THREE.BoxGeometry(0.7, 0.55, MAP_LENGTH + WALL_THICKNESS * 2),
+    createStandardTextureMaterial(WALL_TEXTURE_URL, MAP_LENGTH / 2, 1),
   )
   mesh.name = name
   mesh.position.y = 0.12
@@ -220,9 +200,38 @@ function createEdgeMesh(name: string) {
 function createWallMesh(name: string) {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(WALL_THICKNESS, 1.8, MAP_LENGTH),
-    brawlMaterials.wall,
+    createStandardTextureMaterial(WALL_TEXTURE_URL, MAP_LENGTH / 2, 1),
   )
   mesh.name = name
   mesh.position.y = 0.85
   return mesh
+}
+
+function createEndWallMesh(name: string) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(LANE_WIDTH + WALL_THICKNESS * 2, 1.8, WALL_THICKNESS),
+    createStandardTextureMaterial(WALL_TEXTURE_URL, LANE_WIDTH / 2, 1),
+  )
+  mesh.name = name
+  mesh.position.y = 0.85
+  return mesh
+}
+
+function createStandardTextureMaterial(url: string, repeatX: number, repeatY: number) {
+  return new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    map: createMapTexture(url, repeatX, repeatY),
+    metalness: 0,
+    roughness: 0.78,
+  })
+}
+
+function createMapTexture(url: string, repeatX: number, repeatY: number) {
+  const texture = new THREE.TextureLoader().load(url)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(repeatX, repeatY)
+
+  return texture
 }

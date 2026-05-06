@@ -9,9 +9,11 @@ type SceneStatus = {
   enemyMaxHp: number
   healthBars: Array<{
     hp: number
+    id: string
     isSelected: boolean
     maxHp: number
     name: string
+    showName?: boolean
     visible: boolean
     x: number
     y: number
@@ -124,13 +126,15 @@ function App() {
             {status.healthBars.map((bar) => (
               <div
                 className={`world-health-bar${bar.isSelected ? ' selected' : ''}`}
-                key={bar.name}
+                key={bar.id}
                 style={{
                   opacity: bar.visible ? 1 : 0,
                   transform: `translate(${bar.x}px, ${bar.y}px) translate(-50%, -100%)`,
                 }}
               >
-                <div className="world-health-name">{bar.name}</div>
+                {bar.showName !== false && (
+                  <div className="world-health-name">{bar.name}</div>
+                )}
                 <div className="world-health-track">
                   <span style={{ width: `${getHpPercent(bar.hp, bar.maxHp)}%` }} />
                 </div>
