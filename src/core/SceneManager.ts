@@ -39,6 +39,7 @@ import {
   type HeroAsset,
   type HeroState,
   type MatchResult,
+  type MinimapMarker,
   type SceneStatus,
 } from './sceneConfig'
 import {
@@ -104,6 +105,7 @@ export class SceneManager {
   private readonly scene = new THREE.Scene()
   private animationFrame = 0
   private loadedHeroes = 0
+  private readonly heroAssets: HeroAsset[]
   private matchResult: MatchResult = 'playing'
   private readonly onStatusChange: (status: SceneStatus) => void
   private readonly playerHeroIndex = 0
@@ -112,8 +114,13 @@ export class SceneManager {
     red: 0,
   }
 
-  constructor(canvas: HTMLCanvasElement, onStatusChange: (status: SceneStatus) => void) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    onStatusChange: (status: SceneStatus) => void,
+    playerHeroName = 'Alice',
+  ) {
     this.onStatusChange = onStatusChange
+    this.heroAssets = createMatchHeroAssets(playerHeroName)
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       canvas,
@@ -136,7 +143,7 @@ export class SceneManager {
     this.emitStatus('loading')
     this.loadBrawlMap()
     this.loadObjectiveModels()
-    HERO_ASSETS.forEach((asset, index) => this.loadHeroModel(asset, index))
+    this.heroAssets.forEach((asset, index) => this.loadHeroModel(asset, index))
     this.animate()
   }
 
@@ -448,9 +455,9 @@ export class SceneManager {
 
     if (heroTarget) {
       if (hero.name === 'Alice') {
-        this.combatEffects.createLine(hero.anchor, heroTarget.anchor, 0xb64cff, 0.22)
+        this.combatEffects.createProjectile(hero.anchor, heroTarget.anchor, 0xb64cff, 0.28, 0.14)
       } else {
-        this.combatEffects.createCircle(heroTarget.anchor, 0.72, 0xf5d168, 0.18)
+        this.combatEffects.createForward(hero, 1.55, 1.05, 0xf5d168, 0.2)
       }
 
       this.damageHero(heroTarget, kit.attack.damage, heroTeam)
@@ -461,9 +468,9 @@ export class SceneManager {
       if (hero.name === 'Alice') {
         const targetPoint = objectiveTarget.position.clone()
         targetPoint.y = 1.9
-        this.combatEffects.createLine(hero.anchor, targetPoint, 0xb64cff, 0.22)
+        this.combatEffects.createProjectile(hero.anchor, targetPoint, 0xb64cff, 0.3, 0.15)
       } else {
-        this.combatEffects.createCircle(objectiveTarget.position, 0.9, 0xf5d168, 0.18)
+        this.combatEffects.createForward(hero, kit.attack.range, 1.15, 0xf5d168, 0.22)
       }
 
       this.damageObjective(objectiveTarget, kit.attack.damage, heroTeam)
@@ -518,7 +525,7 @@ export class SceneManager {
     }
 
     if (slot === 'skill2') {
-      this.combatEffects.createCircle(hero.anchor, 2.05, 0xff4b65, 0.35)
+      this.combatEffects.createVortex(hero.anchor, 2.05, 0xff4b65, 0.44)
 
       if (target && isInRadius(hero, target, 2.05)) {
         this.damageHero(target, 130, heroTeam)
@@ -530,6 +537,7 @@ export class SceneManager {
     }
 
     this.combatEffects.createForward(hero, 5.1, 2.35, 0xff203a, 0.42)
+    this.combatEffects.createVortex(hero.anchor, 1.35, 0xff203a, 0.42)
 
     if (target && isInForwardBox(hero, target, 5.1, 2.35)) {
       this.damageHero(target, 260, heroTeam)
@@ -552,7 +560,7 @@ export class SceneManager {
         hero,
         position: orbPosition.clone(),
       }
-      this.combatEffects.createForward(hero, 4.8, 0.9, 0x9b3dff, 0.45)
+      this.combatEffects.createProjectile(hero.anchor, orbPosition, 0x9b3dff, 0.42, 0.18)
       this.combatEffects.createCircle(orbPosition, 0.55, 0xb64cff, 2)
 
       if (target && isInForwardBox(hero, target, 4.8, 0.9)) {
@@ -563,7 +571,7 @@ export class SceneManager {
     }
 
     if (slot === 'skill2') {
-      this.combatEffects.createCircle(hero.anchor, 2.15, 0x9b3dff, 0.36)
+      this.combatEffects.createVortex(hero.anchor, 2.15, 0x9b3dff, 0.42)
 
       if (target && isInRadius(hero, target, 2.15)) {
         this.damageHero(target, 210, heroTeam)
@@ -574,7 +582,7 @@ export class SceneManager {
     }
 
     const combat = this.heroCombat.get(hero)
-    this.combatEffects.createCircle(hero.anchor, 2.7, 0x8b1dff, 1.5)
+    this.combatEffects.createVortex(hero.anchor, 2.7, 0x8b1dff, 1.5)
 
     if (combat) {
       combat.skillWindow = {
@@ -598,7 +606,7 @@ export class SceneManager {
     resolveAabbCollisions(hero.anchor, HERO_COLLIDER_HALF_SIZE, this.wallColliders)
     this.clampToMapBounds(hero.anchor)
     this.aliceBloodOrb = null
-    this.combatEffects.createCircle(hero.anchor, 1.25, 0xb64cff, 0.25)
+    this.combatEffects.createBurst(hero.anchor, 1.25, 0xb64cff, 0.3)
     this.playHeroState(hero, 'skill1')
 
     return true
@@ -632,7 +640,7 @@ export class SceneManager {
       if (hero.name === 'Alice' && combat.skillWindow.slot === 'skill3') {
         const target = this.getEnemyHero(hero)
 
-        this.combatEffects.createCircle(hero.anchor, 2.7, 0x8b1dff, 0.35)
+        this.combatEffects.createBurst(hero.anchor, 2.7, 0x8b1dff, 0.42)
 
         if (target && isInRadius(hero, target, 2.7)) {
           this.damageHero(target, 330, this.getHeroTeamForHero(hero))
@@ -690,11 +698,12 @@ export class SceneManager {
       const targetPoint = target.anchor.clone()
       targetPoint.y = 1.15
 
-      this.combatEffects.createLine(
+      this.combatEffects.createProjectile(
         origin,
         targetPoint,
         objective.team === 'blue' ? 0x5bdcff : 0xff5368,
-        0.22,
+        0.32,
+        0.18,
       )
       this.damageHero(target, objective.attackDamage, objective.team)
     })
@@ -862,7 +871,7 @@ export class SceneManager {
     const base = OBJECTIVE_LAYOUT.find((objective) => (
       objective.kind === 'base' && objective.team === team
     ))
-    const spawn = (base?.position ?? HERO_ASSETS[index].position).clone()
+    const spawn = (base?.position ?? this.heroAssets[index]?.position ?? HERO_ASSETS[index].position).clone()
     const laneDirection = team === 'blue' ? 1 : -1
 
     spawn.x += team === this.getPlayerTeam() ? -1.35 : 1.35
@@ -955,6 +964,7 @@ export class SceneManager {
         projectObjectiveHealthBars(
           OBJECTIVE_LAYOUT,
           this.objectiveCombat,
+          this.getPlayerTeam(),
           this.camera,
           this.rendererWidth,
           this.rendererHeight,
@@ -962,11 +972,14 @@ export class SceneManager {
       ),
       loaded: this.loadedHeroes,
       matchResult: this.matchResult,
+      minimap: {
+        markers: this.createMinimapMarkers(),
+      },
       mode,
       playerKills: this.kills.blue,
       respawnSeconds,
       selectedHp: Math.round(selectedCombat?.hp ?? HERO_MAX_HP),
-      selectedHero: selectedHero?.name ?? HERO_ASSETS[this.playerHeroIndex]?.name ?? 'Alice',
+      selectedHero: selectedHero?.name ?? this.heroAssets[this.playerHeroIndex]?.name ?? 'Alice',
       selectedMaxHp: selectedCombat?.maxHp ?? HERO_MAX_HP,
       selectedState: selectedHero?.currentState ?? 'idle',
       skillCooldowns: {
@@ -974,8 +987,54 @@ export class SceneManager {
         skill2: Math.max(0, (selectedCombat?.cooldowns.skill2 ?? 0) - nowSeconds),
         skill3: Math.max(0, (selectedCombat?.cooldowns.skill3 ?? 0) - nowSeconds),
       },
-      total: HERO_ASSETS.length,
+      total: this.heroAssets.length,
     })
+  }
+
+  private createMinimapMarkers(): MinimapMarker[] {
+    const heroMarkers = this.heroes.filter(Boolean).map((hero, index) => {
+      const combat = this.heroCombat.get(hero)
+      const team = this.getHeroTeam(index)
+      const position = this.projectMinimapPosition(hero.anchor)
+
+      return {
+        alive: (combat?.hp ?? 0) > 0,
+        id: `hero-${hero.name}-${index}`,
+        isPlayer: index === this.playerHeroIndex,
+        kind: 'hero' as const,
+        team,
+        x: position.x,
+        y: position.y,
+      }
+    })
+
+    const objectiveMarkers = OBJECTIVE_LAYOUT.map((objective) => {
+      const combat = this.objectiveCombat.get(objective.id)
+      const position = this.projectMinimapPosition(objective.position)
+
+      return {
+        alive: (combat?.hp ?? 0) > 0,
+        id: objective.id,
+        kind: objective.kind,
+        team: objective.team,
+        x: position.x,
+        y: position.y,
+      }
+    })
+
+    return [...objectiveMarkers, ...heroMarkers]
+  }
+
+  private projectMinimapPosition(position: THREE.Vector3) {
+    const width = this.mapBounds.maxX - this.mapBounds.minX
+    const depth = this.mapBounds.maxZ - this.mapBounds.minZ
+    const x = width > 0 ? ((position.x - this.mapBounds.minX) / width) * 100 : 50
+    const y = depth > 0 ? (1 - (position.z - this.mapBounds.minZ) / depth) * 100 : 50
+
+    return {
+      x: THREE.MathUtils.clamp(x, 0, 100),
+      y: THREE.MathUtils.clamp(y, 0, 100),
+    }
   }
 
   private readonly handleSkillCommand = (event: Event) => {
@@ -986,4 +1045,11 @@ export class SceneManager {
       this.castSkill(selectedHero, slot)
     }
   }
+}
+
+function createMatchHeroAssets(playerHeroName: string): HeroAsset[] {
+  const playerAsset = HERO_ASSETS.find((asset) => asset.name === playerHeroName) ?? HERO_ASSETS[0]
+  const enemyAsset = HERO_ASSETS.find((asset) => asset.name !== playerAsset.name) ?? HERO_ASSETS[1]
+
+  return [playerAsset, enemyAsset]
 }

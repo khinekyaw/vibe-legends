@@ -24,18 +24,19 @@ Implemented:
 - Three.js scene, camera follow, GLB hero loading, animation state playback, and placeholder fallbacks.
 - Keyboard movement, click-to-move, basic attacks, skills, cooldowns, damage, death, and respawn.
 - Modular Brawl-style single-lane map with floor/wall textures, objective colliders, towers, and nexuses.
-- Player side is blue/left by default. Alice is the fixed player hero.
-- Enemy side is red/right. Ruby spawns at the enemy base and stays idle until simple AI is added.
+- Player side is blue/left by default. The player chooses Alice or Ruby at match start.
+- Enemy side is red/right. The unselected hero spawns at the enemy base and stays idle until simple AI is added.
 - Player and enemy spawn at their own base on game start and after death.
 - Tower and nexus health bars render in world space without objective name labels.
 - Towers and nexuses auto-fire at enemy heroes in range.
 - Player basic attacks can damage enemy towers and the enemy nexus.
-- HUD includes player HP, enemy HP, skill buttons, respawn countdown, kill count, and win/lose overlay.
+- HUD includes player HP, enemy HP, skill buttons, respawn countdown, kill count, minimap, and win/lose overlay.
+- Temporary 3D combat VFX cover tower shots, Alice projectiles, Ruby slashes, AoE pulses, and impact bursts.
 - Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
 
 Next:
-- Add simple enemy AI for Ruby: leave base, move down lane, acquire targets, attack heroes/objectives, and retreat or idle when dead/respawning.
-- Add minimap and kill feed polish after enemy AI exists.
+- Add simple enemy AI for the red-side hero: leave base, move down lane, acquire targets, attack heroes/objectives, and retreat or idle when dead/respawning.
+- Add kill feed and HUD polish after enemy AI exists.
 
 Deferred:
 - Multiplayer, matchmaking, authoritative server state, network interpolation, and lag compensation.
@@ -198,6 +199,7 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 
 ### M17 — Local match rules and HUD
 - Lock the local player to the blue/left side and spawn them at the blue base
+- Let the player choose Alice or Ruby before the local match starts
 - Spawn the enemy at the red base; keep the enemy idle until simple AI is added
 - Respawn both heroes at their own base after death
 - Let heroes damage enemy towers and nexuses

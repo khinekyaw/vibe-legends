@@ -6,7 +6,11 @@ import type { MapBounds } from "./MapModel"
 const MAP_LENGTH = 78
 const LANE_WIDTH = 14
 const WALL_THICKNESS = 1
-const FLOOR_TEXTURE_URL = "/assets/images/map/full_floor.png"
+const FLOOR_TEXTURE_URL = "/assets/images/map/floor.png"
+const FLOOR_AO_TEXTURE_URL = "/assets/images/map/floor_ambient_occlusion_map.png"
+const FLOOR_DISPLACEMENT_TEXTURE_URL = "/assets/images/map/floor_displacement_map.png"
+const FLOOR_NORMAL_TEXTURE_URL = "/assets/images/map/floor_normal_map.png"
+const FLOOR_SPECULAR_TEXTURE_URL = "/assets/images/map/floor_specular_map.png"
 const WALL_TEXTURE_URL = "/assets/images/map/wall.png"
 
 export const BRAWL_MAP_BOUNDS: MapBounds = {
@@ -148,9 +152,16 @@ export function createSimpleBrawlDebugGroup(colliders: WorldCollider[]) {
 }
 
 function createFloorMesh() {
+  const geometry = new THREE.BoxGeometry(LANE_WIDTH, 0.16, MAP_LENGTH, 24, 1, 128)
+  const uv = geometry.getAttribute("uv")
+
+  if (uv) {
+    geometry.setAttribute("uv2", uv.clone())
+  }
+
   const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(LANE_WIDTH, 0.16, MAP_LENGTH),
-    createStandardTextureMaterial(FLOOR_TEXTURE_URL, 1, 1),
+    geometry,
+    createFloorMaterial(),
   )
 
   mesh.name = "brawl-floor-plane"
@@ -227,6 +238,24 @@ function createEndWallMesh(name: string) {
   return mesh
 }
 
+function createFloorMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    aoMap: createLinearMapTexture(FLOOR_AO_TEXTURE_URL, 1, 1),
+    aoMapIntensity: 0.72,
+    color: 0xffffff,
+    displacementBias: -0.015,
+    displacementMap: createLinearMapTexture(FLOOR_DISPLACEMENT_TEXTURE_URL, 1, 1),
+    displacementScale: 0.03,
+    map: createMapTexture(FLOOR_TEXTURE_URL, 1, 1),
+    metalness: 0,
+    normalMap: createLinearMapTexture(FLOOR_NORMAL_TEXTURE_URL, 1, 1),
+    normalScale: new THREE.Vector2(0.72, 0.72),
+    roughness: 0.72,
+    specularIntensity: 0.28,
+    specularIntensityMap: createLinearMapTexture(FLOOR_SPECULAR_TEXTURE_URL, 1, 1),
+  })
+}
+
 function createStandardTextureMaterial(
   url: string,
   repeatX: number,
@@ -241,14 +270,35 @@ function createStandardTextureMaterial(
   })
 }
 
+function createLinearMapTexture(
+  url: string,
+  repeatX: number,
+  repeatY: number,
+  rotation: number = 0,
+) {
+  const texture = createBaseTexture(url, repeatX, repeatY, rotation)
+  texture.colorSpace = THREE.NoColorSpace
+  return texture
+}
+
 function createMapTexture(
   url: string,
   repeatX: number,
   repeatY: number,
   rotation: number = 0, // Rotation in radians
 ) {
-  const texture = new THREE.TextureLoader().load(url)
+  const texture = createBaseTexture(url, repeatX, repeatY, rotation)
   texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+function createBaseTexture(
+  url: string,
+  repeatX: number,
+  repeatY: number,
+  rotation: number = 0,
+) {
+  const texture = new THREE.TextureLoader().load(url)
 
   // Setup wrapping
   texture.wrapS = THREE.RepeatWrapping

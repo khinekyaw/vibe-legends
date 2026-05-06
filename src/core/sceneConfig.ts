@@ -63,6 +63,18 @@ export const SKY_COLOR = 0xaedcff
 
 export type HeroState = 'idle' | 'run' | 'attack' | 'skill1' | 'skill2' | 'skill3' | 'death'
 export type MatchResult = 'playing' | 'win' | 'lose'
+export type MinimapMarkerKind = 'base' | 'hero' | 'tower'
+export type MinimapTeam = 'blue' | 'red'
+
+export type MinimapMarker = {
+  alive: boolean
+  id: string
+  isPlayer?: boolean
+  kind: MinimapMarkerKind
+  team: MinimapTeam
+  x: number
+  y: number
+}
 
 export type SceneStatus = {
   enemyHp: number
@@ -81,6 +93,9 @@ export type SceneStatus = {
   }>
   loaded: number
   matchResult: MatchResult
+  minimap: {
+    markers: MinimapMarker[]
+  }
   mode: 'loading' | 'model' | 'placeholder'
   playerKills: number
   respawnSeconds: number

@@ -44,6 +44,7 @@ export function projectWorldHealthBars(
 export function projectObjectiveHealthBars(
   objectives: ObjectiveDefinition[],
   objectiveCombat: Map<string, ObjectiveCombatState>,
+  alliedTeam: ObjectiveDefinition['team'],
   camera: THREE.Camera,
   rendererWidth: number,
   rendererHeight: number,
@@ -57,7 +58,7 @@ export function projectObjectiveHealthBars(
     return {
       hp: Math.round(combat?.hp ?? objective.maxHp),
       id: objective.id,
-      isSelected: false,
+      isSelected: objective.team === alliedTeam,
       maxHp: combat?.maxHp ?? objective.maxHp,
       name: '',
       showName: false,
