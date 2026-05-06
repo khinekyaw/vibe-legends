@@ -22,7 +22,10 @@ Local app: `http://127.0.0.1:5173/`
 
 ## Important Files
 
-- `src/core/SceneManager.ts`: Three.js scene, hero loading, animation state, map loading, camera follow.
+- `src/core/SceneManager.ts`: Three.js scene orchestration, input-driven hero control, camera follow.
+- `src/core/sceneConfig.ts`: Hero asset mappings, map constants, shared scene status types.
+- `src/entities/HeroModel.ts`: Hero GLB setup, placeholder heroes, animation actions and state transitions.
+- `src/map/MapModel.ts`: Map GLB setup, normalization, fallback ground, movement bounds.
 - `src/core/InputManager.ts`: WASD/arrows, Space attack, click/tap move pointer commands.
 - `src/App.tsx`: React shell and compact HUD.
 - `src/App.css`: fullscreen canvas and HUD styling.
@@ -58,7 +61,7 @@ Controls:
 - `X` triggers death debug state
 - `I` triggers idle debug state
 
-Ruby had an off-center rotation issue because her weapon affects the bounding box. The fix uses skeleton/body pivot names in `getHeroPivot()` instead of centering only by full mesh bounds.
+Ruby had an off-center rotation issue because her weapon affects the bounding box. The fix uses skeleton/body pivot names in `src/entities/HeroModel.ts` instead of centering only by full mesh bounds.
 
 ## Map Notes
 
@@ -67,20 +70,23 @@ Ruby had an off-center rotation issue because her weapon affects the bounding bo
 - Real playable arena: upper layer around original GLB `y ~= 305`
 - Small duplicate/preview layer: lower layer around original GLB `y = 0`
 
-Do not anchor the map to the GLB's lowest Y value. `SceneManager.normalizeMap()` detects the upper main layer and uses the playable surface as world `Y = 0`.
+Do not anchor the map to the GLB's lowest Y value. `src/map/MapModel.ts` detects the upper main layer and uses the playable surface as world `Y = 0`.
 
 Manual map offset is here:
 
 ```ts
-map.position.set(-center.x * scale, -surfaceY * scale, -center.z * scale)
+map.position.set(-centeredOffset.x, -surfaceY * scale, -centeredOffset.z)
 ```
 
-Current map constants live near the top of `SceneManager.ts`:
+Current map constants live in `src/core/sceneConfig.ts`:
 
 - `MAP_MODEL_URL`
-- `MAP_WORLD_SIZE`
+- `MAP_WORLD_SIZE` (`88` as of the current map scale)
+- `MAP_ROTATION_Y` (`Math.PI / 2` so lanes read bottom-left to top-right in the camera view)
 - `MAP_SURFACE_NAME_HINTS`
 - `MAP_LIMIT`
+
+Movement bounds are calculated from the transformed upper map layer after scaling and rotation. Do not replace this with a fixed square clamp unless the map/collision plan changes.
 
 ## UI Direction
 
