@@ -12,7 +12,7 @@ export const HERO_ASSETS = [
       skill3: 'skill3',
     },
     name: 'Alice',
-    position: new THREE.Vector3(-0.75, 0, 0),
+    position: new THREE.Vector3(-1.2, 0, -18),
     url: '/assets/models/alice/model.glb',
   },
   {
@@ -26,12 +26,11 @@ export const HERO_ASSETS = [
       skill3: 'skill3',
     },
     name: 'Ruby',
-    position: new THREE.Vector3(0.75, 0, 0),
+    position: new THREE.Vector3(1.2, 0, 18),
     url: '/assets/models/ruby/model.glb',
   },
 ] as const
 
-export const MAP_MODEL_URL = '/assets/models/map/model.glb'
 export const MAP_WORLD_SIZE = 88
 export const MAP_ROTATION_Y = Math.PI / 2
 export const HERO_COLLIDER_HALF_SIZE = 0.1

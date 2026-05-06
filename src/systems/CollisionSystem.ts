@@ -2,11 +2,22 @@ import * as THREE from 'three'
 
 export type AabbCollider = {
   id: string
+  shape?: 'aabb'
   maxX: number
   maxZ: number
   minX: number
   minZ: number
 }
+
+export type CircleCollider = {
+  id: string
+  radius: number
+  shape: 'circle'
+  x: number
+  z: number
+}
+
+export type WorldCollider = AabbCollider | CircleCollider
 
 export type CollisionResult = {
   collided: boolean
@@ -15,7 +26,7 @@ export type CollisionResult = {
 export function resolveAabbCollisions(
   center: THREE.Vector3,
   halfSize: number,
-  colliders: AabbCollider[],
+  colliders: WorldCollider[],
 ): CollisionResult {
   let collided = false
 
@@ -23,6 +34,31 @@ export function resolveAabbCollisions(
     let resolvedThisPass = false
 
     for (const collider of colliders) {
+      if (collider.shape === 'circle') {
+        const offsetX = center.x - collider.x
+        const offsetZ = center.z - collider.z
+        const distanceSq = offsetX * offsetX + offsetZ * offsetZ
+        const minDistance = collider.radius + halfSize
+
+        if (distanceSq >= minDistance * minDistance) {
+          continue
+        }
+
+        const distance = Math.sqrt(distanceSq)
+
+        if (distance > 0) {
+          const push = minDistance - distance
+          center.x += (offsetX / distance) * push
+          center.z += (offsetZ / distance) * push
+        } else {
+          center.z += minDistance
+        }
+
+        collided = true
+        resolvedThisPass = true
+        continue
+      }
+
       const bodyMinX = center.x - halfSize
       const bodyMaxX = center.x + halfSize
       const bodyMinZ = center.z - halfSize

@@ -78,7 +78,7 @@ For now, the game ships with **2 heroes** only. Each hero has:
 
 > Goal: Build the arena the characters inhabit.
 
-Implementation note: Phase 3 currently uses `public/assets/models/map/model.glb` as the arena and static prop source.
+Implementation note: Phase 3 originally used `public/assets/models/map/model.glb`, but Phase 7 replaces it with a modular single-lane Brawl-style bridge map made from primitive geometry.
 
 ### M7 — Flat tilemap arena
 - Create a ground plane mesh or render a grid of tiles
@@ -184,10 +184,13 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 
 ### M17 — Modular objective structures
 - Skip Phase 6 multiplayer for now and add local objective layout first
-- Add 3 lane towers and 1 base for each side, following the original MOBA three-lane objective pattern
+- Replace the complex GLB arena with a simpler Mobile Legends Brawl-style single-lane bridge map
+- Keep floor tiles, side walls, bridge edges, void backdrop, towers, and bases as separate named modules so textures/materials can be swapped later
+- Add 2 lane-aligned towers and 1 base for each side
 - Keep structures modular and data-driven so positions, teams, and visuals can be changed when the map changes
-- Use separate placeholder cylinder meshes for now, not the baked towers connected to the map GLB
-- Add simple objective colliders so heroes cannot walk through towers or bases
+- Use `tower1.glb`, `tower2.glb`, and `nexus.glb` from `public/assets/models/map` for objective visuals, with cylinder fallbacks if an asset fails to load
+- Rotate objective models by team side so tower fronts face into the lane instead of reusing one baked orientation
+- Add simple wall/objective colliders so heroes cannot walk through bridge sides, towers, or bases; towers use smaller circular colliders for smoother movement around them
 
 ### M18 — Minimap, kill feed, skill HUD
 - **Minimap**: Canvas 2D overlay in corner, dots for each hero, map outline

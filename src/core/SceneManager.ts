@@ -6,22 +6,23 @@ import {
   playHeroState as playHeroAnimationState,
   type HeroInstance,
 } from '../entities/HeroModel'
+import type { MapBounds } from '../map/MapModel'
 import {
-  createMapWallColliders,
-  createDefaultMapBounds,
-  createFallbackGround,
-  createWallColliderDebugGroup,
-  prepareMapModel,
-  type MapBounds,
-} from '../map/MapModel'
-import {
+  createObjectiveModelInstance,
   createObjectiveColliders,
   createObjectiveStructures,
-  hideBakedMapTowers,
+  getObjectiveModelUrl,
+  OBJECTIVE_LAYOUT,
 } from '../map/ObjectiveStructures'
 import {
+  BRAWL_MAP_BOUNDS,
+  createSimpleBrawlColliders,
+  createSimpleBrawlDebugGroup,
+  createSimpleBrawlMap,
+} from '../map/SimpleBrawlMap'
+import {
   resolveAabbCollisions,
-  type AabbCollider,
+  type WorldCollider,
 } from '../systems/CollisionSystem'
 import { InputManager } from './InputManager'
 import {
@@ -30,7 +31,6 @@ import {
   HERO_COLLIDER_HALF_SIZE,
   HERO_MAX_HP,
   HERO_SPEED,
-  MAP_MODEL_URL,
   MAP_WORLD_SIZE,
   RESPAWN_DELAY,
   ROTATION_SMOOTHING,
@@ -65,7 +65,7 @@ export class SceneManager {
   private readonly clock = new THREE.Clock()
   private readonly controlsTarget = new THREE.Vector3(0, 0.8, 0)
   private readonly environmentGroup = new THREE.Group()
-  private readonly fallbackGround = createFallbackGround()
+  private readonly brawlMap = createSimpleBrawlMap()
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private readonly heroBounds = new THREE.Box3()
   private readonly heroCombat = new Map<HeroInstance, HeroCombatState>()
@@ -73,16 +73,17 @@ export class SceneManager {
   private readonly combatEffects = new CombatEffects()
   private rendererHeight = 1
   private rendererWidth = 1
-  private mapBounds: MapBounds = createDefaultMapBounds()
+  private mapBounds: MapBounds = BRAWL_MAP_BOUNDS
   private readonly objectiveColliders = createObjectiveColliders()
   private readonly objectiveStructures = createObjectiveStructures()
-  private readonly wallColliders: AabbCollider[] = []
+  private readonly wallColliders: WorldCollider[] = []
   private aliceBloodOrb: { createdAt: number; hero: HeroInstance; position: THREE.Vector3 } | null = null
   private wallColliderDebugGroup: THREE.Group | null = null
-  private wallColliderDebugVisible = true
+  private wallColliderDebugVisible = false
   private readonly pointer = new THREE.Vector2()
   private readonly raycaster = new THREE.Raycaster()
   private readonly loader = new GLTFLoader()
+  private readonly objectiveModelSources = new Map<string, THREE.Object3D>()
   private inputManager: InputManager | null = null
   private readonly renderer: THREE.WebGLRenderer
   private readonly scene = new THREE.Scene()
@@ -102,7 +103,7 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
 
@@ -114,7 +115,8 @@ export class SceneManager {
     window.addEventListener('keydown', this.handleKeyDown)
     window.addEventListener('skill-command', this.handleSkillCommand)
     this.emitStatus('loading')
-    this.loadMapModel()
+    this.loadBrawlMap()
+    this.loadObjectiveModels()
     HERO_ASSETS.forEach((asset, index) => this.loadHeroModel(asset, index))
     this.animate()
   }
@@ -162,34 +164,69 @@ export class SceneManager {
     rimLight.position.set(-4, 3, -2)
     this.scene.add(rimLight)
 
-    this.environmentGroup.add(this.fallbackGround, this.objectiveStructures)
+    this.environmentGroup.add(this.brawlMap, this.objectiveStructures)
   }
 
-  private loadMapModel() {
-    this.loader.load(
-      MAP_MODEL_URL,
-      (gltf) => {
-        const map = gltf.scene
-        this.mapBounds = prepareMapModel(map)
-        hideBakedMapTowers(map)
-        this.wallColliders.splice(
-          0,
-          this.wallColliders.length,
-          ...createMapWallColliders(map),
-          ...this.objectiveColliders,
-        )
-        this.environmentGroup.add(map)
-        this.wallColliderDebugGroup?.removeFromParent()
-        this.wallColliderDebugGroup = createWallColliderDebugGroup(this.wallColliders)
-        this.wallColliderDebugGroup.visible = this.wallColliderDebugVisible
-        this.environmentGroup.add(this.wallColliderDebugGroup)
-        this.fallbackGround.visible = false
-      },
-      undefined,
-      () => {
-        this.fallbackGround.visible = true
-      },
+  private loadBrawlMap() {
+    this.mapBounds = BRAWL_MAP_BOUNDS
+    this.wallColliders.splice(
+      0,
+      this.wallColliders.length,
+      ...createSimpleBrawlColliders(),
+      ...this.objectiveColliders,
     )
+    this.wallColliderDebugGroup?.removeFromParent()
+    this.wallColliderDebugGroup = createSimpleBrawlDebugGroup(this.wallColliders)
+    this.wallColliderDebugGroup.visible = this.wallColliderDebugVisible
+    this.environmentGroup.add(this.wallColliderDebugGroup)
+  }
+
+  private loadObjectiveModels() {
+    const urls = [...new Set(OBJECTIVE_LAYOUT.map(getObjectiveModelUrl))]
+
+    Promise.all(
+      urls.map(
+        (url) =>
+          new Promise<void>((resolve) => {
+            this.loader.load(
+              url,
+              (gltf) => {
+                this.objectiveModelSources.set(url, gltf.scene)
+                resolve()
+              },
+              undefined,
+              () => resolve(),
+            )
+          }),
+      ),
+    ).then(() => {
+      OBJECTIVE_LAYOUT.forEach((objective) => {
+        const source = this.objectiveModelSources.get(getObjectiveModelUrl(objective))
+        const container = this.objectiveStructures.getObjectByName(objective.id)
+
+        if (!source || !container) {
+          return
+        }
+
+        this.disposeObjectivePlaceholder(container)
+        container.clear()
+        container.add(createObjectiveModelInstance(objective, source))
+      })
+    })
+  }
+
+  private disposeObjectivePlaceholder(object: THREE.Object3D) {
+    object.children.forEach((child) => {
+      child.traverse((descendant) => {
+        if (descendant instanceof THREE.Mesh) {
+          descendant.geometry.dispose()
+          const materials = Array.isArray(descendant.material)
+            ? descendant.material
+            : [descendant.material]
+          materials.forEach((material) => material.dispose())
+        }
+      })
+    })
   }
 
   private loadHeroModel(asset: HeroAsset, index: number) {
