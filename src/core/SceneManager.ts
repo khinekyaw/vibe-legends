@@ -120,7 +120,7 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera = new THREE.PerspectiveCamera(15, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
 
