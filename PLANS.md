@@ -32,7 +32,7 @@ Implemented:
 - Towers and nexuses auto-fire at enemy heroes in range.
 - Player basic attacks can damage enemy towers and the enemy nexus.
 - Minion waves spawn 3 smaller minions per team, use `public/assets/models/minion/model.glb`, show health bars, move down lane, and basic attack enemy minions, heroes, and objectives.
-- Allied and enemy AI heroes move down lane, steer around objective colliders, acquire enemies/objectives, and basic attack only when valid targets are in range.
+- Allied and enemy AI heroes move down lane, steer around objective colliders, acquire enemies/objectives, cast skills when useful and off cooldown, and basic attack only when valid targets are in range.
 - Heroes have a local level system. Team XP from minion and hero kills increases hero level up to 15, scaling max HP and hero damage.
 - HUD includes player HP, XP/level, nearest enemy HP/level, skill buttons, respawn countdown, kill count, match clock, minimap, and win/lose overlay.
 - Respawn duration scales with match duration, starting at 5 seconds and increasing by 1 second per match minute up to 20 seconds.
@@ -40,7 +40,7 @@ Implemented:
 - Temporary 3D combat VFX cover tower shots, Alice projectiles, Ruby slashes, Layla energy shots, AoE pulses, and impact bursts.
 - Player basic attack shows a static range ring only when no valid target is in range. The ring follows the player, replaces older range rings, and uses hero-themed colors.
 - Ruby's basic attack and attack range ring now use the same red effect color as Ruby's skills. Layla's model renders 20% smaller than the shared normalized hero size.
-- First audio pass is wired with looping match BGM and Layla-only basic attack / skill SFX using supplied `.mp3` fallback assets.
+- First audio pass is wired with looping match BGM, hero basic attack / skill SFX for Alice, Ruby, and Layla, plus minion and tower attack SFX using supplied `.mp3` fallback assets.
 - `SceneManager.ts` has been partially split into focused modules for match roster setup, shared match types, scene math helpers, objective model loading, and HUD/minimap status projection.
 - Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
 
@@ -235,6 +235,7 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - Show world-space minion and hero health bars with team colors and hero levels
 - Move allied and enemy AI heroes from their bases down the lane
 - Prefer attacking the player when in range
+- Cast available hero skills against enemy heroes/minions when targets are in useful range
 - Attack enemy minions, towers, and nexus when no hero target is available
 - Stop acting while dead and resume from red base after respawn
 - Keep behavior deterministic and local-only
@@ -254,7 +255,7 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - Keep sound event names data-driven by hero and action so future skins/network events can reuse the same interface.
 - Add cooldown/throttling for repeated minion/tower sounds so team fights do not become too loud.
 - Recommended audio formats: `.ogg` for shipped web assets, with `.mp3` fallback if needed. Keep short SFX mono or narrow stereo, normalized consistently, and trimmed with minimal silence.
-- Current prototype audio uses `.mp3` fallback files for BGM and Layla only.
+- Current prototype audio uses `.mp3` fallback files for BGM, Alice/Ruby/Layla hero cues, minion attacks, and tower attacks. Minion and tower cues are throttled to avoid overly dense playback during fights.
 
 Expected audio asset paths:
 

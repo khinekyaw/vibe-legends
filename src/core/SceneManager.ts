@@ -69,6 +69,24 @@ import type { MinionCombatState, ObjectiveCombatState } from '../ui/WorldHealthB
 
 const HERO_AI_AGGRO_RANGE = 8.5
 const HERO_KILL_XP_REWARD = 220
+const HERO_AI_SKILL_RANGES: Record<string, Record<SkillSlot, number>> = {
+  Alice: {
+    skill1: 4.8,
+    skill2: 2.15,
+    skill3: 2.7,
+  },
+  Layla: {
+    skill1: 6.8,
+    skill2: 6.2,
+    skill3: 9.2,
+  },
+  Ruby: {
+    skill1: 4.2,
+    skill2: 2.05,
+    skill3: 5.1,
+  },
+}
+const HERO_AI_SKILL_PRIORITY: SkillSlot[] = ['skill3', 'skill2', 'skill1']
 const RUBY_EFFECT_COLOR = 0xff4b65
 const MINION_AGGRO_RANGE = 6
 const MINION_ATTACK_DAMAGE = 34
@@ -494,6 +512,10 @@ export class SceneManager {
     const targetRadius = this.getCombatTargetRadius(target)
     const distance = hero.anchor.distanceTo(targetPosition)
 
+    if (this.castAiSkill(hero, target, distance, targetRadius)) {
+      return
+    }
+
     if (distance <= kit.attack.range + targetRadius) {
       hero.moveTarget = null
 
@@ -517,6 +539,36 @@ export class SceneManager {
       delta,
       combat.slowUntil > now ? 0.55 : 0.72,
     )
+  }
+
+  private castAiSkill(
+    hero: HeroInstance,
+    target: CombatTarget,
+    distance: number,
+    targetRadius: number,
+  ) {
+    if (target.kind === 'objective') {
+      return false
+    }
+
+    const combat = this.heroCombat.get(hero)
+    const skillRanges = HERO_AI_SKILL_RANGES[hero.name]
+    const now = performance.now() / 1000
+
+    if (!combat || !skillRanges) {
+      return false
+    }
+
+    for (const slot of HERO_AI_SKILL_PRIORITY) {
+      if (combat.cooldowns[slot] > now || distance > skillRanges[slot] + targetRadius) {
+        continue
+      }
+
+      this.faceTarget(hero, this.getCombatTargetPosition(target))
+      return this.castSkill(hero, slot)
+    }
+
+    return false
   }
 
   private updateCamera(delta: number) {
@@ -730,6 +782,7 @@ export class SceneManager {
     const targetPosition = this.getCombatTargetPosition(target)
     this.faceMinionTarget(minion, targetPosition)
     playMinionState(minion, 'attack')
+    audioManager.playMinionAttack()
     minion.actionLockedUntil = now + MINION_ATTACK_LOCK_SECONDS
     minion.nextAttackAt = now + MINION_ATTACK_SECONDS
 
@@ -780,6 +833,7 @@ export class SceneManager {
     }
 
     if (hero.name === 'Alice' && slot === 'skill1' && this.tryAliceBloodOrbTeleport(hero)) {
+      audioManager.playHeroCue(hero.name, slot)
       return true
     }
 
@@ -795,11 +849,11 @@ export class SceneManager {
     hero.moveTarget = null
     combat.cooldowns[slot] = now + skill.cooldown
     this.playHeroState(hero, skill.animationState)
+    audioManager.playHeroCue(hero.name, slot)
 
     if (hero.name === 'Ruby') {
       this.castRubySkill(hero, slot, now)
     } else if (hero.name === 'Layla') {
-      audioManager.playHeroCue(hero.name, slot)
       this.castLaylaSkill(hero, slot, now)
     } else {
       this.castAliceSkill(hero, slot, now)
@@ -1072,6 +1126,9 @@ export class SceneManager {
         0.32,
         0.18,
       )
+      if (objective.kind === 'tower') {
+        audioManager.playTowerAttack(objective.id)
+      }
       if (target.kind === 'hero') {
         this.damageHero(target.hero, objective.attackDamage, objective.team)
       } else if (target.kind === 'minion') {
