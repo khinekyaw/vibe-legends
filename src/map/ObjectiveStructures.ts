@@ -1,10 +1,10 @@
-import * as THREE from 'three'
-import type { WorldCollider } from '../systems/CollisionSystem'
+import * as THREE from "three"
+import type { WorldCollider } from "../systems/CollisionSystem"
 
-type ObjectiveKind = 'base' | 'tower'
-type ObjectiveModelKey = 'nexus' | 'tower1' | 'tower2'
-type ObjectiveTeam = 'blue' | 'red'
-type ObjectiveLane = 'inner' | 'mid' | 'outer'
+type ObjectiveKind = "base" | "tower"
+type ObjectiveModelKey = "nexus" | "tower1" | "tower2"
+type ObjectiveTeam = "blue" | "red"
+type ObjectiveLane = "inner" | "mid" | "outer"
 
 export type ObjectiveDefinition = {
   attackDamage: number
@@ -24,10 +24,14 @@ export type ObjectiveDefinition = {
 }
 
 export const OBJECTIVE_MODEL_URLS: Record<ObjectiveModelKey, string> = {
-  nexus: '/assets/models/map/nexus.glb',
-  tower1: '/assets/models/map/tower1.glb',
-  tower2: '/assets/models/map/tower2.glb',
+  nexus: "/assets/models/map/nexus.glb",
+  tower1: "/assets/models/map/tower1.glb",
+  tower2: "/assets/models/map/tower2.glb",
 }
+
+const tower1PosZ = 16.5
+const tower2PosZ = 8.8
+const nexusPosZ = 26.4
 
 export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
   {
@@ -37,12 +41,12 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     colliderHalfSize: 1.08,
     colliderRadius: 0.88,
     healthBarHeight: 3.65,
-    id: 'blue-outer-tower',
-    kind: 'tower',
-    lane: 'outer',
-    modelKey: 'tower1',
-    position: new THREE.Vector3(0, 0, 20),
-    team: 'blue',
+    id: "blue-outer-tower",
+    kind: "tower",
+    lane: "outer",
+    modelKey: "tower1",
+    position: new THREE.Vector3(0, 0, tower1PosZ),
+    team: "blue",
     visualHeight: 3.2,
     maxHp: 2200,
   },
@@ -53,12 +57,12 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     colliderHalfSize: 1.08,
     colliderRadius: 0.88,
     healthBarHeight: 3.55,
-    id: 'blue-inner-tower',
-    kind: 'tower',
-    lane: 'inner',
-    modelKey: 'tower2',
-    position: new THREE.Vector3(0, 0, 8),
-    team: 'blue',
+    id: "blue-inner-tower",
+    kind: "tower",
+    lane: "inner",
+    modelKey: "tower2",
+    position: new THREE.Vector3(0, 0, tower2PosZ),
+    team: "blue",
     visualHeight: 3.1,
     maxHp: 2400,
   },
@@ -69,11 +73,11 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     colliderHalfSize: 2.55,
     colliderRadius: 1.35,
     healthBarHeight: 3.05,
-    id: 'blue-base',
-    kind: 'base',
-    modelKey: 'nexus',
-    position: new THREE.Vector3(0, 0, 33),
-    team: 'blue',
+    id: "blue-base",
+    kind: "base",
+    modelKey: "nexus",
+    position: new THREE.Vector3(0, 0, nexusPosZ),
+    team: "blue",
     visualHeight: 2.65,
     maxHp: 3600,
   },
@@ -84,12 +88,12 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     colliderHalfSize: 1.08,
     colliderRadius: 0.88,
     healthBarHeight: 3.55,
-    id: 'red-inner-tower',
-    kind: 'tower',
-    lane: 'inner',
-    modelKey: 'tower2',
-    position: new THREE.Vector3(0, 0, -8),
-    team: 'red',
+    id: "red-inner-tower",
+    kind: "tower",
+    lane: "inner",
+    modelKey: "tower2",
+    position: new THREE.Vector3(0, 0, -1 * tower2PosZ),
+    team: "red",
     visualHeight: 3.1,
     maxHp: 2400,
   },
@@ -100,12 +104,12 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     colliderHalfSize: 1.08,
     colliderRadius: 0.88,
     healthBarHeight: 3.65,
-    id: 'red-outer-tower',
-    kind: 'tower',
-    lane: 'outer',
-    modelKey: 'tower1',
-    position: new THREE.Vector3(0, 0, -20),
-    team: 'red',
+    id: "red-outer-tower",
+    kind: "tower",
+    lane: "outer",
+    modelKey: "tower1",
+    position: new THREE.Vector3(0, 0, -1 * tower1PosZ),
+    team: "red",
     visualHeight: 3.2,
     maxHp: 2200,
   },
@@ -116,11 +120,11 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     colliderHalfSize: 2.55,
     colliderRadius: 1.35,
     healthBarHeight: 3.05,
-    id: 'red-base',
-    kind: 'base',
-    modelKey: 'nexus',
-    position: new THREE.Vector3(0, 0, -33),
-    team: 'red',
+    id: "red-base",
+    kind: "base",
+    modelKey: "nexus",
+    position: new THREE.Vector3(0, 0, -1 * nexusPosZ),
+    team: "red",
     visualHeight: 2.65,
     maxHp: 3600,
   },
@@ -128,7 +132,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
 
 export function createObjectiveStructures(layout = OBJECTIVE_LAYOUT) {
   const group = new THREE.Group()
-  group.name = 'objective-structures'
+  group.name = "objective-structures"
 
   layout.forEach((objective) => {
     const container = new THREE.Group()
@@ -140,13 +144,15 @@ export function createObjectiveStructures(layout = OBJECTIVE_LAYOUT) {
   return group
 }
 
-export function createObjectiveColliders(layout = OBJECTIVE_LAYOUT): WorldCollider[] {
+export function createObjectiveColliders(
+  layout = OBJECTIVE_LAYOUT,
+): WorldCollider[] {
   return layout.map((objective) => {
     if (objective.colliderRadius !== undefined) {
       return {
         id: objective.id,
         radius: objective.colliderRadius ?? objective.colliderHalfSize,
-        shape: 'circle',
+        shape: "circle",
         x: objective.position.x,
         z: objective.position.z,
       }
@@ -167,11 +173,11 @@ export function hideBakedMapTowers(map: THREE.Group) {
     const name = object.name.toLowerCase()
 
     if (
-      name.includes('statue') ||
-      name.includes('jidiblue') ||
-      name.includes('jidired') ||
-      name.includes('bluejidi') ||
-      name.includes('redjidi')
+      name.includes("statue") ||
+      name.includes("jidiblue") ||
+      name.includes("jidired") ||
+      name.includes("bluejidi") ||
+      name.includes("redjidi")
     ) {
       object.visible = false
     }
@@ -183,7 +189,7 @@ export function getObjectiveModelUrl(objective: ObjectiveDefinition) {
 }
 
 export function getObjectiveRotationY(objective: ObjectiveDefinition) {
-  return objective.team === 'blue' ? Math.PI : 0
+  return objective.team === "blue" ? Math.PI : 0
 }
 
 export function createObjectiveModelInstance(

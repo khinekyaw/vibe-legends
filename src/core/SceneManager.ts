@@ -12,15 +12,21 @@ import {
   playMinionState,
   type MinionInstance,
 } from '../entities/MinionModel'
-import type { MapBounds } from '../map/MapModel'
+import {
+  createMapWallColliders,
+  prepareMapModel,
+  type MapBounds,
+} from '../map/MapModel'
 import {
   createObjectiveColliders,
   createObjectiveStructures,
+  hideBakedMapTowers,
   type ObjectiveDefinition,
   OBJECTIVE_LAYOUT,
 } from '../map/ObjectiveStructures'
 import {
   BRAWL_MAP_BOUNDS,
+  createSimpleBrawlDebugGroup,
   createSimpleBrawlColliders,
   createSimpleBrawlMap,
 } from '../map/SimpleBrawlMap'
@@ -103,20 +109,48 @@ const MINION_WAVE_INTERVAL = 18
 const MINION_WAVE_X_OFFSETS = [-1.15, 0, 1.15]
 const OBJECTIVE_AVOIDANCE_LOOKAHEAD = 3.2
 const OBJECTIVE_AVOIDANCE_PADDING = 0.72
+const MAP_MODEL_URL = '/assets/models/map/model.glb'
+
+type MapTransformControls = {
+  positionX: number
+  positionY: number
+  positionZ: number
+  rotationX: number
+  rotationY: number
+  rotationZ: number
+  scale: number
+}
+
+const DEFAULT_MAP_TRANSFORM: MapTransformControls = {
+  positionX: -0.8,
+  positionY: -43.1,
+  positionZ: 0,
+  rotationX: 0,
+  rotationY: 0,
+  rotationZ: 0,
+  scale: 1.92,
+}
 
 export class SceneManager {
   private readonly camera: THREE.PerspectiveCamera
   private readonly cameraDesiredTarget = new THREE.Vector3()
+  // private readonly cameraOffset = new THREE.Vector3(
+  //   MAP_WORLD_SIZE * 0.22,
+  //   MAP_WORLD_SIZE * 0.27,
+  //   MAP_WORLD_SIZE * 0.24,
+  // )
   private readonly cameraOffset = new THREE.Vector3(
-    MAP_WORLD_SIZE * 0.22,
-    MAP_WORLD_SIZE * 0.27,
-    MAP_WORLD_SIZE * 0.24,
-  )
+  0,
+  MAP_WORLD_SIZE * 0.55,
+  0.01,
+)
   private readonly characterGroup = new THREE.Group()
   private readonly clock = new THREE.Clock()
   private readonly controlsTarget = new THREE.Vector3(0, 0.8, 0)
   private readonly environmentGroup = new THREE.Group()
   private readonly brawlMap = createSimpleBrawlMap()
+  private readonly mapModelTransformGroup = new THREE.Group()
+  private readonly wallColliderDebugGroup = new THREE.Group()
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private readonly heroBounds = new THREE.Box3()
   private readonly heroCombat = new Map<HeroInstance, HeroCombatState>()
@@ -138,6 +172,8 @@ export class SceneManager {
   private rendererHeight = 1
   private rendererWidth = 1
   private mapBounds: MapBounds = BRAWL_MAP_BOUNDS
+  private mapModel: THREE.Group | null = null
+  private mapTransform: MapTransformControls = { ...DEFAULT_MAP_TRANSFORM }
   private readonly objectiveColliders = createObjectiveColliders()
   private readonly objectiveStructures = createObjectiveStructures()
   private readonly wallColliders: WorldCollider[] = []
@@ -182,7 +218,8 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(15, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera = new THREE.PerspectiveCamera(85, 1, 0.1, MAP_WORLD_SIZE * 4)
+    // this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
 
@@ -194,7 +231,7 @@ export class SceneManager {
     this.inputManager = new InputManager(this.renderer.domElement)
     window.addEventListener('skill-command', this.handleSkillCommand)
     this.emitStatus('loading')
-    this.loadBrawlMap()
+    this.loadMapModel()
     loadObjectiveModels(this.loader, this.objectiveModelSources, this.objectiveStructures)
     this.loadMinionModel()
     this.heroSlots.forEach((slot, index) => this.loadHeroModel(slot, index))
@@ -243,10 +280,18 @@ export class SceneManager {
     rimLight.position.set(-4, 3, -2)
     this.scene.add(rimLight)
 
-    this.environmentGroup.add(this.brawlMap, this.objectiveStructures)
+    this.brawlMap.visible = false
+    this.mapModelTransformGroup.name = 'map-model-transform-controls'
+    this.wallColliderDebugGroup.name = 'wall-collider-debug-layer'
+    this.environmentGroup.add(
+      this.brawlMap,
+      this.mapModelTransformGroup,
+      this.objectiveStructures,
+      this.wallColliderDebugGroup,
+    )
   }
 
-  private loadBrawlMap() {
+  private loadMapModel() {
     this.mapBounds = BRAWL_MAP_BOUNDS
     this.wallColliders.splice(
       0,
@@ -254,6 +299,81 @@ export class SceneManager {
       ...createSimpleBrawlColliders(),
       ...this.objectiveColliders,
     )
+    this.applyMapTransform()
+    this.refreshWallColliderDebug()
+
+    this.loader.load(
+      MAP_MODEL_URL,
+      (gltf) => {
+        const map = gltf.scene
+        this.mapBounds = prepareMapModel(map)
+        hideBakedMapTowers(map)
+        this.mapModel = map
+        this.mapModelTransformGroup.clear()
+        this.mapModelTransformGroup.add(map)
+        this.applyMapTransform()
+        this.refreshMapModelColliders()
+      },
+      undefined,
+      () => {
+        this.brawlMap.visible = false
+      },
+    )
+  }
+
+  private applyMapTransform() {
+    this.mapModelTransformGroup.position.set(
+      this.mapTransform.positionX,
+      this.mapTransform.positionY,
+      this.mapTransform.positionZ,
+    )
+    this.mapModelTransformGroup.rotation.set(
+      THREE.MathUtils.degToRad(this.mapTransform.rotationX),
+      THREE.MathUtils.degToRad(this.mapTransform.rotationY),
+      THREE.MathUtils.degToRad(this.mapTransform.rotationZ),
+    )
+    this.mapModelTransformGroup.scale.setScalar(Math.max(0.01, this.mapTransform.scale))
+    this.mapModelTransformGroup.updateMatrixWorld(true)
+  }
+
+  private refreshMapModelColliders() {
+    if (!this.mapModel) {
+      return
+    }
+
+    const mapColliders = createMapWallColliders(this.mapModelTransformGroup)
+    const box = new THREE.Box3().setFromObject(this.mapModelTransformGroup)
+
+    if (!box.isEmpty()) {
+      this.mapBounds = {
+        maxX: box.max.x,
+        maxZ: box.max.z,
+        minX: box.min.x,
+        minZ: box.min.z,
+      }
+    }
+
+    this.wallColliders.splice(
+      0,
+      this.wallColliders.length,
+      ...(mapColliders.length > 0 ? mapColliders : createSimpleBrawlColliders()),
+      ...this.objectiveColliders,
+    )
+    this.refreshWallColliderDebug()
+  }
+
+  private refreshWallColliderDebug() {
+    this.wallColliderDebugGroup.children.forEach((object) => {
+      object.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose()
+          const materials = Array.isArray(child.material) ? child.material : [child.material]
+          materials.forEach((material) => material.dispose())
+        }
+      })
+    })
+    this.wallColliderDebugGroup.clear()
+    this.wallColliderDebugGroup.add(createSimpleBrawlDebugGroup(this.wallColliders))
   }
 
   private loadMinionModel() {
