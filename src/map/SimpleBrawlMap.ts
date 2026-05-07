@@ -7,8 +7,10 @@ const MAP_LENGTH = 78
 const LANE_WIDTH = 14
 const WALL_THICKNESS = 1
 const FLOOR_TEXTURE_URL = "/assets/images/map/floor.png"
-const FLOOR_AO_TEXTURE_URL = "/assets/images/map/floor_ambient_occlusion_map.png"
-const FLOOR_DISPLACEMENT_TEXTURE_URL = "/assets/images/map/floor_displacement_map.png"
+const FLOOR_AO_TEXTURE_URL =
+  "/assets/images/map/floor_ambient_occlusion_map.png"
+const FLOOR_DISPLACEMENT_TEXTURE_URL =
+  "/assets/images/map/floor_displacement_map.png"
 const FLOOR_NORMAL_TEXTURE_URL = "/assets/images/map/floor_normal_map.png"
 const FLOOR_SPECULAR_TEXTURE_URL = "/assets/images/map/floor_specular_map.png"
 const WALL_TEXTURE_URL = "/assets/images/map/wall.png"
@@ -21,10 +23,10 @@ export const BRAWL_MAP_BOUNDS: MapBounds = {
 }
 
 export const GLB_BRIDGE_MAP_BOUNDS: MapBounds = {
-  maxX: 5.35,
-  maxZ: 31.5,
-  minX: -5.35,
-  minZ: -31.5,
+  maxX: 8.4,
+  maxZ: 36.4,
+  minX: -8.4,
+  minZ: -36.4,
 }
 
 const brawlMaterials = {
@@ -111,28 +113,35 @@ export function createSimpleBrawlColliders(): AabbCollider[] {
 export function createGlbBridgeMapColliders(): WorldCollider[] {
   const wallRadius = 0.28
   const leftPath: Array<[number, number]> = [
-    [-1.45, -34.0],
-    [-6, -29],
-    [-7, -23],
-    [-8, -20],
-    [-4.55, -16],
-    [-4.55, -5],
-    [-8, -4],
-    [-8, 7],
-    [-4.55, 7],
-    [-4.55, 16.8],
-    [-7.55, 24.0],
-    [-6, 28.5],
-    [-1.45, 36.0],
+    [1.45, -36],
+    [6, -29],
+    [7, -23],
+    [8, -20],
+    [4.55, -16],
+    [4.55, -5],
+    [8, -4],
+    [8, 7],
+    [4.55, 7],
+    [4.55, 16.8],
+    [7.55, 24],
+    [6, 28.5],
+    [1.45, 36],
   ]
-  const rightPath = leftPath.map(([x, z]) => [-x, z] as [number, number])
+  const rightPath = leftPath
+    .map(([x, z]) => [-x, -z] as [number, number])
+    .reverse()
   const colliders = [
     ...createSegmentPathColliders("left-bridge-edge", leftPath, wallRadius),
     ...createSegmentPathColliders("right-bridge-edge", rightPath, wallRadius),
   ]
 
   colliders.push(
-    createSegmentCollider("red-base-end-edge", leftPath[0], rightPath[0], wallRadius),
+    createSegmentCollider(
+      "red-base-end-edge",
+      leftPath[0],
+      rightPath[0],
+      wallRadius,
+    ),
     createSegmentCollider(
       "blue-base-end-edge",
       leftPath[leftPath.length - 1],
@@ -167,7 +176,11 @@ export function createSimpleBrawlDebugGroup(colliders: WorldCollider[]) {
       }
 
       const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(length, WALL_COLLIDER_DEBUG_HEIGHT, collider.radius * 2),
+        new THREE.BoxGeometry(
+          length,
+          WALL_COLLIDER_DEBUG_HEIGHT,
+          collider.radius * 2,
+        ),
         material,
       )
       mesh.position.set(
@@ -225,12 +238,14 @@ function createSegmentPathColliders(
   const colliders: WorldCollider[] = []
 
   for (let index = 0; index < points.length - 1; index += 1) {
-    colliders.push(createSegmentCollider(
-      `${idPrefix}-${index + 1}`,
-      points[index],
-      points[index + 1],
-      radius,
-    ))
+    colliders.push(
+      createSegmentCollider(
+        `${idPrefix}-${index + 1}`,
+        points[index],
+        points[index + 1],
+        radius,
+      ),
+    )
   }
 
   return colliders
@@ -254,17 +269,21 @@ function createSegmentCollider(
 }
 
 function createFloorMesh() {
-  const geometry = new THREE.BoxGeometry(LANE_WIDTH, 0.16, MAP_LENGTH, 24, 1, 128)
+  const geometry = new THREE.BoxGeometry(
+    LANE_WIDTH,
+    0.16,
+    MAP_LENGTH,
+    24,
+    1,
+    128,
+  )
   const uv = geometry.getAttribute("uv")
 
   if (uv) {
     geometry.setAttribute("uv2", uv.clone())
   }
 
-  const mesh = new THREE.Mesh(
-    geometry,
-    createFloorMaterial(),
-  )
+  const mesh = new THREE.Mesh(geometry, createFloorMaterial())
 
   mesh.name = "brawl-floor-plane"
   return mesh
@@ -346,7 +365,11 @@ function createFloorMaterial() {
     aoMapIntensity: 0.72,
     color: 0xffffff,
     displacementBias: -0.015,
-    displacementMap: createLinearMapTexture(FLOOR_DISPLACEMENT_TEXTURE_URL, 1, 1),
+    displacementMap: createLinearMapTexture(
+      FLOOR_DISPLACEMENT_TEXTURE_URL,
+      1,
+      1,
+    ),
     displacementScale: 0.03,
     map: createMapTexture(FLOOR_TEXTURE_URL, 1, 1),
     metalness: 0,
@@ -354,7 +377,11 @@ function createFloorMaterial() {
     normalScale: new THREE.Vector2(0.72, 0.72),
     roughness: 0.72,
     specularIntensity: 0.28,
-    specularIntensityMap: createLinearMapTexture(FLOOR_SPECULAR_TEXTURE_URL, 1, 1),
+    specularIntensityMap: createLinearMapTexture(
+      FLOOR_SPECULAR_TEXTURE_URL,
+      1,
+      1,
+    ),
   })
 }
 
