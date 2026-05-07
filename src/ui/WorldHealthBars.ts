@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { HERO_MAX_HP, type SceneStatus } from '../core/sceneConfig'
 import type { HeroInstance } from '../entities/HeroModel'
+import type { MinionInstance } from '../entities/MinionModel'
 import type { ObjectiveDefinition } from '../map/ObjectiveStructures'
 import type { HeroCombatState } from '../systems/CombatSystem'
 
@@ -11,6 +12,11 @@ export type ObjectiveCombatState = {
   hp: number
   maxHp: number
   nextFireAt: number
+}
+
+export type MinionCombatState = {
+  hp: number
+  maxHp: number
 }
 
 export function projectWorldHealthBars(
@@ -63,6 +69,34 @@ export function projectObjectiveHealthBars(
       name: '',
       showName: false,
       visible: screenPosition.z >= -1 && screenPosition.z <= 1 && combat !== undefined,
+      x: ((screenPosition.x + 1) / 2) * rendererWidth,
+      y: ((-screenPosition.y + 1) / 2) * rendererHeight,
+    }
+  })
+}
+
+export function projectMinionHealthBars(
+  minions: MinionInstance[],
+  minionCombat: Map<MinionInstance, MinionCombatState>,
+  alliedTeam: ObjectiveDefinition['team'],
+  camera: THREE.Camera,
+  rendererWidth: number,
+  rendererHeight: number,
+): SceneStatus['healthBars'] {
+  return minions.map((minion) => {
+    const combat = minionCombat.get(minion)
+    worldPosition.copy(minion.anchor)
+    worldPosition.y = 0.82
+    screenPosition.copy(worldPosition).project(camera)
+
+    return {
+      hp: Math.round(combat?.hp ?? 0),
+      id: minion.id,
+      isSelected: minion.team === alliedTeam,
+      maxHp: combat?.maxHp ?? 1,
+      name: '',
+      showName: false,
+      visible: screenPosition.z >= -1 && screenPosition.z <= 1 && combat !== undefined && combat.hp > 0,
       x: ((screenPosition.x + 1) / 2) * rendererWidth,
       y: ((-screenPosition.y + 1) / 2) * rendererHeight,
     }

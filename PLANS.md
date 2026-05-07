@@ -30,13 +30,15 @@ Implemented:
 - Tower and nexus health bars render in world space without objective name labels.
 - Towers and nexuses auto-fire at enemy heroes in range.
 - Player basic attacks can damage enemy towers and the enemy nexus.
+- Minion waves spawn 3 smaller minions per team, use `public/assets/models/minion/model.glb`, show health bars, move down lane, and basic attack enemy minions, heroes, and objectives.
+- The red-side enemy hero has simple local AI: move down lane, steer around objective colliders, acquire enemies/objectives, and basic attack when in range.
 - HUD includes player HP, enemy HP, skill buttons, respawn countdown, kill count, minimap, and win/lose overlay.
 - Temporary 3D combat VFX cover tower shots, Alice projectiles, Ruby slashes, AoE pulses, and impact bursts.
 - Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
 
 Next:
-- Add simple enemy AI for the red-side hero: leave base, move down lane, acquire targets, attack heroes/objectives, and retreat or idle when dead/respawning.
-- Add kill feed and HUD polish after enemy AI exists.
+- Tune minion/hero AI priorities, wave timing, attack timing, and combat balance after playtesting.
+- Add kill feed and HUD polish.
 
 Deferred:
 - Multiplayer, matchmaking, authoritative server state, network interpolation, and lag compensation.
@@ -211,9 +213,13 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - **Match end screen**: Centered win/lose result overlay
 
 ### M18 — Simple enemy AI
-- Move Ruby from red base down the lane
+- Spawn 3 minions per team per wave and move them down the lane
+- Minions basic attack enemy minions, heroes, towers, and nexus
+- Minions and enemy hero steer around tower/base colliders while moving down lane
+- Show world-space minion health bars and minimap dots
+- Move the red-side hero from red base down the lane
 - Prefer attacking the player when in range
-- Attack enemy towers and nexus when no hero target is available
+- Attack enemy minions, towers, and nexus when no hero target is available
 - Stop acting while dead and resume from red base after respawn
 - Keep behavior deterministic and local-only
 

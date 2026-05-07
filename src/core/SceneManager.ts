@@ -6,6 +6,12 @@ import {
   playHeroState as playHeroAnimationState,
   type HeroInstance,
 } from '../entities/HeroModel'
+import {
+  createMinionFromModel,
+  createPlaceholderMinion,
+  playMinionState,
+  type MinionInstance,
+} from '../entities/MinionModel'
 import type { MapBounds } from '../map/MapModel'
 import {
   createObjectiveModelInstance,
@@ -55,11 +61,33 @@ import {
 import { CombatEffects } from '../systems/CombatEffects'
 import {
   projectObjectiveHealthBars,
+  projectMinionHealthBars,
   projectWorldHealthBars,
+  type MinionCombatState,
   type ObjectiveCombatState,
 } from '../ui/WorldHealthBars'
 
 type TeamSide = 'blue' | 'red'
+type CombatTarget =
+  | { kind: 'hero'; hero: HeroInstance }
+  | { kind: 'minion'; minion: MinionInstance }
+  | { kind: 'objective'; objective: ObjectiveDefinition }
+
+const HERO_AI_AGGRO_RANGE = 8.5
+const MINION_AGGRO_RANGE = 6
+const MINION_ATTACK_DAMAGE = 34
+const MINION_ATTACK_LOCK_SECONDS = 0.52
+const MINION_ATTACK_RANGE = 1.55
+const MINION_ATTACK_SECONDS = 1.15
+const MINION_COLLIDER_HALF_SIZE = HERO_COLLIDER_HALF_SIZE * 0.5
+const MINION_MAX_HP = 420
+const MINION_MODEL_URL = '/assets/models/minion/model.glb'
+const MINION_REMOVE_DELAY = 2.2
+const MINION_SPEED = MAP_WORLD_SIZE * 0.028
+const MINION_WAVE_INTERVAL = 18
+const MINION_WAVE_X_OFFSETS = [-1.15, 0, 1.15]
+const OBJECTIVE_AVOIDANCE_LOOKAHEAD = 3.2
+const OBJECTIVE_AVOIDANCE_PADDING = 0.72
 
 export class SceneManager {
   private readonly camera: THREE.PerspectiveCamera
@@ -78,6 +106,9 @@ export class SceneManager {
   private readonly heroBounds = new THREE.Box3()
   private readonly heroCombat = new Map<HeroInstance, HeroCombatState>()
   private readonly heroes: HeroInstance[] = []
+  private readonly minionBounds = new THREE.Box3()
+  private readonly minionCombat = new Map<MinionInstance, MinionCombatState>()
+  private readonly minions: MinionInstance[] = []
   private readonly objectiveCombat = new Map<string, ObjectiveCombatState>(
     OBJECTIVE_LAYOUT.map((objective) => [
       objective.id,
@@ -99,6 +130,11 @@ export class SceneManager {
   private readonly pointer = new THREE.Vector2()
   private readonly raycaster = new THREE.Raycaster()
   private readonly loader = new GLTFLoader()
+  private minionAnimations: THREE.AnimationClip[] = []
+  private minionModelReady = false
+  private minionModelSource: THREE.Object3D | null = null
+  private minionSequence = 0
+  private nextMinionWaveAt = Number.POSITIVE_INFINITY
   private readonly objectiveModelSources = new Map<string, THREE.Object3D>()
   private inputManager: InputManager | null = null
   private readonly renderer: THREE.WebGLRenderer
@@ -143,6 +179,7 @@ export class SceneManager {
     this.emitStatus('loading')
     this.loadBrawlMap()
     this.loadObjectiveModels()
+    this.loadMinionModel()
     this.heroAssets.forEach((asset, index) => this.loadHeroModel(asset, index))
     this.animate()
   }
@@ -236,6 +273,23 @@ export class SceneManager {
     })
   }
 
+  private loadMinionModel() {
+    this.loader.load(
+      MINION_MODEL_URL,
+      (gltf) => {
+        this.minionModelSource = gltf.scene
+        this.minionAnimations = gltf.animations
+        this.minionModelReady = true
+        this.nextMinionWaveAt = performance.now() / 1000
+      },
+      undefined,
+      () => {
+        this.minionModelReady = true
+        this.nextMinionWaveAt = performance.now() / 1000
+      },
+    )
+  }
+
   private disposeObjectivePlaceholder(object: THREE.Object3D) {
     object.children.forEach((child) => {
       child.traverse((descendant) => {
@@ -287,12 +341,19 @@ export class SceneManager {
   private animate = () => {
     const delta = this.clock.getDelta()
     this.updateCombatTimers()
+    this.updateMinionWaves()
     this.updateObjectiveAttacks()
+    this.updateMinions(delta)
+    this.updateEnemyHeroAi(delta)
     this.updateControlledHero(delta)
     this.updateActiveSkills()
     this.heroes.forEach((hero) => {
       hero.mixer?.update(delta)
       this.pinHeroToAnchor(hero)
+    })
+    this.minions.forEach((minion) => {
+      minion.mixer?.update(delta)
+      this.pinMinionToAnchor(minion)
     })
     this.updateCamera(delta)
     this.emitStatus('model')
@@ -306,6 +367,175 @@ export class SceneManager {
     hero.group.position.x = hero.anchor.x
     hero.group.position.y -= this.heroBounds.min.y
     hero.group.position.z = hero.anchor.z
+  }
+
+  private pinMinionToAnchor(minion: MinionInstance) {
+    this.minionBounds.setFromObject(minion.group)
+    minion.group.position.x = minion.anchor.x
+    minion.group.position.y -= this.minionBounds.min.y
+    minion.group.position.z = minion.anchor.z
+  }
+
+  private updateMinionWaves() {
+    if (!this.minionModelReady || this.matchResult !== 'playing') {
+      return
+    }
+
+    const now = performance.now() / 1000
+
+    if (now < this.nextMinionWaveAt) {
+      return
+    }
+
+    this.spawnMinionWave('blue')
+    this.spawnMinionWave('red')
+    this.nextMinionWaveAt = now + MINION_WAVE_INTERVAL
+  }
+
+  private spawnMinionWave(team: TeamSide) {
+    const base = this.getTeamBase(team)
+    const baseCombat = base ? this.objectiveCombat.get(base.id) : undefined
+
+    if (!base || !baseCombat || baseCombat.hp <= 0) {
+      return
+    }
+
+    const laneDirection = this.getLaneDirection(team)
+
+    MINION_WAVE_X_OFFSETS.forEach((xOffset) => {
+      const position = base.position.clone()
+      position.x += xOffset
+      position.z += laneDirection * 4.2
+      position.y = 0
+
+      const minion = this.createMinion(team, position)
+      this.minions.push(minion)
+      this.minionCombat.set(minion, {
+        hp: MINION_MAX_HP,
+        maxHp: MINION_MAX_HP,
+      })
+      this.characterGroup.add(minion.group)
+    })
+  }
+
+  private createMinion(team: TeamSide, position: THREE.Vector3) {
+    const id = `${team}-minion-${this.minionSequence += 1}`
+
+    if (this.minionModelSource) {
+      return createMinionFromModel(
+        id,
+        team,
+        this.minionModelSource,
+        this.minionAnimations,
+        position,
+      )
+    }
+
+    return createPlaceholderMinion(id, team, position)
+  }
+
+  private updateMinions(delta: number) {
+    if (this.matchResult !== 'playing') {
+      return
+    }
+
+    const now = performance.now() / 1000
+
+    this.minions.forEach((minion) => {
+      const combat = this.minionCombat.get(minion)
+
+      if (!combat || combat.hp <= 0) {
+        return
+      }
+
+      if (now < minion.actionLockedUntil) {
+        return
+      }
+
+      const target = this.getMinionAiTarget(minion)
+
+      if (!target) {
+        this.moveMinion(minion, this.getLaneDirectionVector(minion.team), delta)
+        return
+      }
+
+      const targetPosition = this.getCombatTargetPosition(target)
+      const targetRadius = this.getCombatTargetRadius(target)
+      const distance = minion.anchor.distanceTo(targetPosition)
+
+      if (distance <= MINION_ATTACK_RANGE + targetRadius) {
+        if (minion.nextAttackAt <= now) {
+          this.castMinionAttack(minion, target, now)
+        } else {
+          this.faceMinionTarget(minion, targetPosition)
+          playMinionState(minion, 'idle')
+        }
+
+        return
+      }
+
+      const direction = targetPosition.clone().sub(minion.anchor)
+      direction.y = 0
+
+      if (direction.lengthSq() === 0) {
+        playMinionState(minion, 'idle')
+        return
+      }
+
+      this.moveMinion(minion, direction.normalize(), delta)
+    })
+  }
+
+  private updateEnemyHeroAi(delta: number) {
+    const hero = this.heroes[1]
+    const combat = hero ? this.heroCombat.get(hero) : null
+
+    if (!hero || !combat || combat.hp <= 0 || this.matchResult !== 'playing') {
+      return
+    }
+
+    const now = performance.now() / 1000
+
+    if (combat.stunnedUntil > now || combat.immobilizedUntil > now) {
+      hero.moveTarget = null
+      this.playHeroState(hero, 'idle')
+      return
+    }
+
+    const team = this.getHeroTeam(1)
+    const kit = HERO_KITS[hero.name]
+    const target = this.getHeroAiTarget(hero, team)
+
+    if (!target) {
+      this.playHeroState(hero, 'idle')
+      return
+    }
+
+    const targetPosition = this.getCombatTargetPosition(target)
+    const targetRadius = this.getCombatTargetRadius(target)
+    const distance = hero.anchor.distanceTo(targetPosition)
+
+    if (distance <= kit.attack.range + targetRadius) {
+      hero.moveTarget = null
+      this.castBasicAttack(hero)
+      return
+    }
+
+    const direction = targetPosition.clone().sub(hero.anchor)
+    direction.y = 0
+
+    if (direction.lengthSq() === 0) {
+      this.playHeroState(hero, 'idle')
+      return
+    }
+
+    hero.moveTarget = null
+    this.moveHero(
+      hero,
+      this.steerAroundObjectives(hero.anchor, direction.normalize(), team),
+      delta,
+      combat.slowUntil > now ? 0.55 : 0.72,
+    )
   }
 
   private updateCamera(delta: number) {
@@ -432,6 +662,25 @@ export class SceneManager {
     this.playHeroState(hero, collision.collided && !hero.moveTarget ? 'idle' : 'run')
   }
 
+  private moveMinion(
+    minion: MinionInstance,
+    direction: THREE.Vector3,
+    delta: number,
+  ) {
+    if (minion.currentState === 'death') {
+      return
+    }
+
+    const steeredDirection = this.steerAroundObjectives(minion.anchor, direction, minion.team)
+
+    minion.anchor.addScaledVector(steeredDirection, MINION_SPEED * delta)
+    resolveAabbCollisions(minion.anchor, MINION_COLLIDER_HALF_SIZE, this.wallColliders)
+    this.clampToMapBounds(minion.anchor)
+    minion.facingAngle = Math.atan2(steeredDirection.x, steeredDirection.z)
+    minion.group.rotation.y = minion.facingAngle
+    playMinionState(minion, 'run')
+  }
+
   private castBasicAttack(hero: HeroInstance) {
     if (!ATTACK_RETURN_STATES.has(hero.currentState) || this.matchResult !== 'playing') {
       return
@@ -442,10 +691,13 @@ export class SceneManager {
     const enemyHero = this.getEnemyHero(hero)
     const heroTarget =
       enemyHero && isInRadius(hero, enemyHero, kit.attack.range) ? enemyHero : null
-    const objectiveTarget = heroTarget
+    const minionTarget = heroTarget
+      ? null
+      : this.getClosestEnemyMinion(hero.anchor, heroTeam, kit.attack.range + 0.35)
+    const objectiveTarget = heroTarget || minionTarget
       ? null
       : this.getAttackableEnemyObjective(hero, kit.attack.range)
-    const targetPosition = heroTarget?.anchor ?? objectiveTarget?.position
+    const targetPosition = heroTarget?.anchor ?? minionTarget?.anchor ?? objectiveTarget?.position
 
     if (targetPosition) {
       this.faceTarget(hero, targetPosition)
@@ -464,6 +716,17 @@ export class SceneManager {
       return
     }
 
+    if (minionTarget) {
+      if (hero.name === 'Alice') {
+        this.combatEffects.createProjectile(hero.anchor, minionTarget.anchor, 0xb64cff, 0.28, 0.12)
+      } else {
+        this.combatEffects.createForward(hero, 1.55, 1.05, 0xf5d168, 0.2)
+      }
+
+      this.damageMinion(minionTarget, kit.attack.damage, heroTeam)
+      return
+    }
+
     if (objectiveTarget) {
       if (hero.name === 'Alice') {
         const targetPoint = objectiveTarget.position.clone()
@@ -474,6 +737,36 @@ export class SceneManager {
       }
 
       this.damageObjective(objectiveTarget, kit.attack.damage, heroTeam)
+    }
+  }
+
+  private castMinionAttack(minion: MinionInstance, target: CombatTarget, now: number) {
+    if (minion.nextAttackAt > now || minion.currentState === 'death') {
+      return
+    }
+
+    const targetPosition = this.getCombatTargetPosition(target)
+    this.faceMinionTarget(minion, targetPosition)
+    playMinionState(minion, 'attack')
+    minion.actionLockedUntil = now + MINION_ATTACK_LOCK_SECONDS
+    minion.nextAttackAt = now + MINION_ATTACK_SECONDS
+
+    const impact = targetPosition.clone()
+    impact.y = target.kind === 'objective' ? 1.35 : 0.85
+    this.combatEffects.createProjectile(
+      minion.anchor,
+      impact,
+      minion.team === 'blue' ? 0x5bdcff : 0xff5368,
+      0.24,
+      0.09,
+    )
+
+    if (target.kind === 'hero') {
+      this.damageHero(target.hero, MINION_ATTACK_DAMAGE, minion.team)
+    } else if (target.kind === 'minion') {
+      this.damageMinion(target.minion, MINION_ATTACK_DAMAGE, minion.team)
+    } else {
+      this.damageObjective(target.objective, MINION_ATTACK_DAMAGE, minion.team)
     }
   }
 
@@ -515,6 +808,7 @@ export class SceneManager {
 
     if (slot === 'skill1') {
       this.combatEffects.createForward(hero, 4.2, 1.45, 0xff4b65, 0.28)
+      this.damageEnemyMinionsInForwardBox(hero, 4.2, 1.45, 150)
 
       if (target && isInForwardBox(hero, target, 4.2, 1.45)) {
         this.damageHero(target, 150, heroTeam)
@@ -526,6 +820,7 @@ export class SceneManager {
 
     if (slot === 'skill2') {
       this.combatEffects.createVortex(hero.anchor, 2.05, 0xff4b65, 0.44)
+      this.damageEnemyMinionsInRadius(hero, 2.05, 130)
 
       if (target && isInRadius(hero, target, 2.05)) {
         this.damageHero(target, 130, heroTeam)
@@ -538,6 +833,7 @@ export class SceneManager {
 
     this.combatEffects.createForward(hero, 5.1, 2.35, 0xff203a, 0.42)
     this.combatEffects.createVortex(hero.anchor, 1.35, 0xff203a, 0.42)
+    this.damageEnemyMinionsInForwardBox(hero, 5.1, 2.35, 260)
 
     if (target && isInForwardBox(hero, target, 5.1, 2.35)) {
       this.damageHero(target, 260, heroTeam)
@@ -562,6 +858,7 @@ export class SceneManager {
       }
       this.combatEffects.createProjectile(hero.anchor, orbPosition, 0x9b3dff, 0.42, 0.18)
       this.combatEffects.createCircle(orbPosition, 0.55, 0xb64cff, 2)
+      this.damageEnemyMinionsInForwardBox(hero, 4.8, 0.9, 170)
 
       if (target && isInForwardBox(hero, target, 4.8, 0.9)) {
         this.damageHero(target, 170, heroTeam)
@@ -572,6 +869,7 @@ export class SceneManager {
 
     if (slot === 'skill2') {
       this.combatEffects.createVortex(hero.anchor, 2.15, 0x9b3dff, 0.42)
+      this.damageEnemyMinionsInRadius(hero, 2.15, 210)
 
       if (target && isInRadius(hero, target, 2.15)) {
         this.damageHero(target, 210, heroTeam)
@@ -641,6 +939,7 @@ export class SceneManager {
         const target = this.getEnemyHero(hero)
 
         this.combatEffects.createBurst(hero.anchor, 2.7, 0x8b1dff, 0.42)
+        this.damageEnemyMinionsInRadius(hero, 2.7, 330)
 
         if (target && isInRadius(hero, target, 2.7)) {
           this.damageHero(target, 330, this.getHeroTeamForHero(hero))
@@ -666,6 +965,19 @@ export class SceneManager {
 
       this.respawnHero(hero, index)
     })
+
+    for (let index = this.minions.length - 1; index >= 0; index -= 1) {
+      const minion = this.minions[index]
+      const combat = this.minionCombat.get(minion)
+
+      if (!combat || combat.hp > 0 || !minion.deadAt || now - minion.deadAt < MINION_REMOVE_DELAY) {
+        continue
+      }
+
+      minion.group.removeFromParent()
+      this.minionCombat.delete(minion)
+      this.minions.splice(index, 1)
+    }
 
     if (this.aliceBloodOrb && now - this.aliceBloodOrb.createdAt > 2) {
       this.aliceBloodOrb = null
@@ -695,8 +1007,8 @@ export class SceneManager {
       objectiveCombat.nextFireAt = now + objective.attackSeconds
       const origin = objective.position.clone()
       origin.y = objective.kind === 'base' ? 2.2 : 2.6
-      const targetPoint = target.anchor.clone()
-      targetPoint.y = 1.15
+      const targetPoint = this.getCombatTargetPosition(target)
+      targetPoint.y = 0.95
 
       this.combatEffects.createProjectile(
         origin,
@@ -705,7 +1017,11 @@ export class SceneManager {
         0.32,
         0.18,
       )
-      this.damageHero(target, objective.attackDamage, objective.team)
+      if (target.kind === 'hero') {
+        this.damageHero(target.hero, objective.attackDamage, objective.team)
+      } else if (target.kind === 'minion') {
+        this.damageMinion(target.minion, objective.attackDamage, objective.team)
+      }
     })
   }
 
@@ -721,6 +1037,26 @@ export class SceneManager {
     }
 
     this.combatEffects.createCircle(target.anchor, 0.72, 0xff2c4a, 0.18)
+  }
+
+  private damageMinion(target: MinionInstance, amount: number, sourceTeam?: TeamSide) {
+    const combat = this.minionCombat.get(target)
+
+    if (
+      !combat ||
+      combat.hp <= 0 ||
+      this.matchResult !== 'playing' ||
+      sourceTeam === target.team
+    ) {
+      return
+    }
+
+    combat.hp = Math.max(0, combat.hp - amount)
+    this.combatEffects.createCircle(target.anchor, 0.42, 0xff2c4a, 0.16)
+
+    if (combat.hp <= 0) {
+      this.killMinion(target)
+    }
   }
 
   private damageObjective(target: ObjectiveDefinition, amount: number, sourceTeam?: TeamSide) {
@@ -742,6 +1078,19 @@ export class SceneManager {
     if (wasDestroyed && target.kind === 'base') {
       this.finishMatch(target.team === this.getPlayerTeam() ? 'lose' : 'win')
     }
+  }
+
+  private killMinion(minion: MinionInstance) {
+    const combat = this.minionCombat.get(minion)
+
+    if (!combat || minion.currentState === 'death') {
+      return
+    }
+
+    combat.hp = 0
+    minion.deadAt = performance.now() / 1000
+    minion.actionLockedUntil = 0
+    playMinionState(minion, 'death')
   }
 
   private killHero(hero: HeroInstance, sourceTeam?: TeamSide) {
@@ -801,10 +1150,64 @@ export class SceneManager {
   }
 
   private getEnemyHero(hero: HeroInstance) {
+    const heroTeam = this.getHeroTeamForHero(hero)
+
     return this.heroes.find((candidate) => {
       const combat = this.heroCombat.get(candidate)
-      return candidate !== hero && combat && combat.hp > 0
+      return candidate !== hero && combat && combat.hp > 0 && this.getHeroTeamForHero(candidate) !== heroTeam
     })
+  }
+
+  private getClosestEnemyHero(
+    position: THREE.Vector3,
+    team: TeamSide,
+    range: number,
+  ): HeroInstance | null {
+    let closestDistance = Number.POSITIVE_INFINITY
+    let closestHero: HeroInstance | null = null
+
+    this.heroes.forEach((hero, index) => {
+      const combat = this.heroCombat.get(hero)
+
+      if (!hero || !combat || combat.hp <= 0 || this.getHeroTeam(index) === team) {
+        return
+      }
+
+      const distance = hero.anchor.distanceTo(position)
+
+      if (distance <= range && distance < closestDistance) {
+        closestDistance = distance
+        closestHero = hero
+      }
+    })
+
+    return closestHero
+  }
+
+  private getClosestEnemyMinion(
+    position: THREE.Vector3,
+    team: TeamSide,
+    range: number,
+  ): MinionInstance | null {
+    let closestDistance = Number.POSITIVE_INFINITY
+    let closestMinion: MinionInstance | null = null
+
+    this.minions.forEach((minion) => {
+      const combat = this.minionCombat.get(minion)
+
+      if (!combat || combat.hp <= 0 || minion.team === team) {
+        return
+      }
+
+      const distance = minion.anchor.distanceTo(position)
+
+      if (distance <= range && distance < closestDistance) {
+        closestDistance = distance
+        closestMinion = minion
+      }
+    })
+
+    return closestMinion
   }
 
   private getAttackableEnemyObjective(hero: HeroInstance, range: number): ObjectiveDefinition | null {
@@ -837,20 +1240,91 @@ export class SceneManager {
     return closestObjective
   }
 
+  private getClosestEnemyObjective(
+    position: THREE.Vector3,
+    team: TeamSide,
+    range = Number.POSITIVE_INFINITY,
+  ): ObjectiveDefinition | null {
+    let closestDistance = Number.POSITIVE_INFINITY
+    let closestObjective: ObjectiveDefinition | null = null
+
+    OBJECTIVE_LAYOUT.forEach((objective) => {
+      const combat = this.objectiveCombat.get(objective.id)
+
+      if (!combat || combat.hp <= 0 || objective.team === team) {
+        return
+      }
+
+      const hitRadius = objective.colliderRadius ?? objective.colliderHalfSize
+      const distance = Math.max(0, position.distanceTo(objective.position) - hitRadius)
+
+      if (distance <= range && distance < closestDistance) {
+        closestDistance = distance
+        closestObjective = objective
+      }
+    })
+
+    return closestObjective
+  }
+
+  private getMinionAiTarget(minion: MinionInstance): CombatTarget | null {
+    const enemyMinion = this.getClosestEnemyMinion(minion.anchor, minion.team, MINION_AGGRO_RANGE)
+
+    if (enemyMinion) {
+      return { kind: 'minion', minion: enemyMinion }
+    }
+
+    const enemyHero = this.getClosestEnemyHero(minion.anchor, minion.team, MINION_AGGRO_RANGE)
+
+    if (enemyHero) {
+      return { kind: 'hero', hero: enemyHero }
+    }
+
+    const attackableObjective = this.getClosestEnemyObjective(
+      minion.anchor,
+      minion.team,
+      MINION_AGGRO_RANGE,
+    )
+
+    if (attackableObjective) {
+      return { kind: 'objective', objective: attackableObjective }
+    }
+
+    const laneObjective = this.getClosestEnemyObjective(minion.anchor, minion.team)
+    return laneObjective ? { kind: 'objective', objective: laneObjective } : null
+  }
+
+  private getHeroAiTarget(hero: HeroInstance, team: TeamSide): CombatTarget | null {
+    const enemyHero = this.getClosestEnemyHero(hero.anchor, team, HERO_AI_AGGRO_RANGE)
+
+    if (enemyHero) {
+      return { kind: 'hero', hero: enemyHero }
+    }
+
+    const enemyMinion = this.getClosestEnemyMinion(hero.anchor, team, HERO_AI_AGGRO_RANGE)
+
+    if (enemyMinion) {
+      return { kind: 'minion', minion: enemyMinion }
+    }
+
+    const objective = this.getClosestEnemyObjective(hero.anchor, team)
+    return objective ? { kind: 'objective', objective } : null
+  }
+
   private getObjectiveTarget(
     team: TeamSide,
     position: THREE.Vector3,
     range: number,
   ) {
-    return this.heroes.find((candidate, index) => {
-      const combat = this.heroCombat.get(candidate)
+    const minion = this.getClosestEnemyMinion(position, team, range)
 
-      if (!candidate || !combat || combat.hp <= 0 || this.getHeroTeam(index) === team) {
-        return false
-      }
+    if (minion) {
+      return { kind: 'minion', minion } satisfies CombatTarget
+    }
 
-      return candidate.anchor.distanceTo(position) <= range
-    })
+    const hero = this.getClosestEnemyHero(position, team, range)
+
+    return hero ? { kind: 'hero', hero } satisfies CombatTarget : null
   }
 
   private getHeroTeam(index: number): TeamSide {
@@ -866,13 +1340,101 @@ export class SceneManager {
     return this.getHeroTeam(this.playerHeroIndex)
   }
 
-  private getHeroSpawnPosition(index: number) {
-    const team = this.getHeroTeam(index)
-    const base = OBJECTIVE_LAYOUT.find((objective) => (
+  private getTeamBase(team: TeamSide) {
+    return OBJECTIVE_LAYOUT.find((objective) => (
       objective.kind === 'base' && objective.team === team
     ))
+  }
+
+  private getLaneDirection(team: TeamSide) {
+    return team === 'blue' ? -1 : 1
+  }
+
+  private getLaneDirectionVector(team: TeamSide) {
+    return new THREE.Vector3(0, 0, this.getLaneDirection(team))
+  }
+
+  private getCombatTargetPosition(target: CombatTarget) {
+    if (target.kind === 'hero') {
+      return target.hero.anchor.clone()
+    }
+
+    if (target.kind === 'minion') {
+      return target.minion.anchor.clone()
+    }
+
+    return target.objective.position.clone()
+  }
+
+  private getCombatTargetRadius(target: CombatTarget) {
+    if (target.kind === 'objective') {
+      return target.objective.colliderRadius ?? target.objective.colliderHalfSize
+    }
+
+    return target.kind === 'minion' ? 0.2 : 0.6
+  }
+
+  private steerAroundObjectives(
+    position: THREE.Vector3,
+    direction: THREE.Vector3,
+    team: TeamSide,
+  ) {
+    const safeDirection = direction.clone()
+    safeDirection.y = 0
+
+    if (safeDirection.lengthSq() === 0) {
+      return safeDirection
+    }
+
+    safeDirection.normalize()
+
+    for (const objective of OBJECTIVE_LAYOUT) {
+      const radius = (objective.colliderRadius ?? objective.colliderHalfSize) + OBJECTIVE_AVOIDANCE_PADDING
+      const offset = objective.position.clone().sub(position)
+      offset.y = 0
+      const forwardDistance = offset.dot(safeDirection)
+
+      if (
+        forwardDistance <= 0 ||
+        forwardDistance > OBJECTIVE_AVOIDANCE_LOOKAHEAD + radius
+      ) {
+        continue
+      }
+
+      const closestPoint = position.clone().addScaledVector(safeDirection, forwardDistance)
+      const lateralDistance = closestPoint.distanceTo(objective.position)
+
+      if (lateralDistance >= radius) {
+        continue
+      }
+
+      let side = Math.sign(position.x - objective.position.x)
+
+      if (side === 0) {
+        side = team === 'blue' ? -1 : 1
+      }
+
+      const waypoint = new THREE.Vector3(
+        objective.position.x + side * radius,
+        0,
+        position.z + this.getLaneDirection(team) * (OBJECTIVE_AVOIDANCE_LOOKAHEAD + 0.8),
+      )
+      const steeredDirection = waypoint.sub(position)
+      steeredDirection.y = 0
+
+      if (steeredDirection.lengthSq() > 0) {
+        return steeredDirection.normalize()
+      }
+    }
+
+    return safeDirection
+  }
+
+  private getHeroSpawnPosition(index: number) {
+    const team = this.getHeroTeam(index)
+    const base = this.getTeamBase(team)
     const spawn = (base?.position ?? this.heroAssets[index]?.position ?? HERO_ASSETS[index].position).clone()
-    const laneDirection = team === 'blue' ? -1 : 1
+    const laneDirection = this.getLaneDirection(team)
 
     spawn.x += team === this.getPlayerTeam() ? -1.35 : 1.35
     spawn.z += laneDirection * 3.2
@@ -928,6 +1490,66 @@ export class SceneManager {
     hero.group.rotation.y = hero.facingAngle
   }
 
+  private faceMinionTarget(minion: MinionInstance, target: THREE.Vector3) {
+    const offset = target.clone().sub(minion.anchor)
+    offset.y = 0
+
+    if (offset.lengthSq() === 0) {
+      return
+    }
+
+    minion.facingAngle = Math.atan2(offset.x, offset.z)
+    minion.group.rotation.y = minion.facingAngle
+  }
+
+  private damageEnemyMinionsInRadius(hero: HeroInstance, radius: number, amount: number) {
+    const heroTeam = this.getHeroTeamForHero(hero)
+
+    this.minions.forEach((minion) => {
+      const combat = this.minionCombat.get(minion)
+
+      if (!combat || combat.hp <= 0 || minion.team === heroTeam) {
+        return
+      }
+
+      if (hero.anchor.distanceTo(minion.anchor) <= radius) {
+        this.damageMinion(minion, amount, heroTeam)
+      }
+    })
+  }
+
+  private damageEnemyMinionsInForwardBox(
+    hero: HeroInstance,
+    range: number,
+    width: number,
+    amount: number,
+  ) {
+    const heroTeam = this.getHeroTeamForHero(hero)
+    const forward = getHeroForward(hero)
+
+    this.minions.forEach((minion) => {
+      const combat = this.minionCombat.get(minion)
+
+      if (!combat || combat.hp <= 0 || minion.team === heroTeam) {
+        return
+      }
+
+      const offset = minion.anchor.clone().sub(hero.anchor)
+      offset.y = 0
+      const forwardDistance = offset.dot(forward)
+
+      if (forwardDistance < 0 || forwardDistance > range) {
+        return
+      }
+
+      const sideDistance = offset.sub(forward.clone().multiplyScalar(forwardDistance)).length()
+
+      if (sideDistance <= width / 2) {
+        this.damageMinion(minion, amount, heroTeam)
+      }
+    })
+  }
+
   private clampToMapBounds(point: THREE.Vector3) {
     point.x = THREE.MathUtils.clamp(point.x, this.mapBounds.minX, this.mapBounds.maxX)
     point.z = THREE.MathUtils.clamp(point.z, this.mapBounds.minZ, this.mapBounds.maxZ)
@@ -961,6 +1583,14 @@ export class SceneManager {
         this.rendererWidth,
         this.rendererHeight,
       ).concat(
+        projectMinionHealthBars(
+          this.minions,
+          this.minionCombat,
+          this.getPlayerTeam(),
+          this.camera,
+          this.rendererWidth,
+          this.rendererHeight,
+        ),
         projectObjectiveHealthBars(
           OBJECTIVE_LAYOUT,
           this.objectiveCombat,
@@ -1022,7 +1652,21 @@ export class SceneManager {
       }
     })
 
-    return [...objectiveMarkers, ...heroMarkers]
+    const minionMarkers = this.minions.map((minion) => {
+      const combat = this.minionCombat.get(minion)
+      const position = this.projectMinimapPosition(minion.anchor)
+
+      return {
+        alive: (combat?.hp ?? 0) > 0,
+        id: minion.id,
+        kind: 'minion' as const,
+        team: minion.team,
+        x: position.x,
+        y: position.y,
+      }
+    })
+
+    return [...objectiveMarkers, ...minionMarkers, ...heroMarkers]
   }
 
   private projectMinimapPosition(position: THREE.Vector3) {

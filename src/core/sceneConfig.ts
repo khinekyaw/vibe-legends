@@ -63,7 +63,7 @@ export const SKY_COLOR = 0xaedcff
 
 export type HeroState = 'idle' | 'run' | 'attack' | 'skill1' | 'skill2' | 'skill3' | 'death'
 export type MatchResult = 'playing' | 'win' | 'lose'
-export type MinimapMarkerKind = 'base' | 'hero' | 'tower'
+export type MinimapMarkerKind = 'base' | 'hero' | 'minion' | 'tower'
 export type MinimapTeam = 'blue' | 'red'
 
 export type MinimapMarker = {
