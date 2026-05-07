@@ -46,7 +46,7 @@ Implemented:
 
 Next:
 - Tune minion/hero AI priorities, wave timing, attack timing, and combat balance after playtesting.
-- Add kill feed, HUD polish, and audio system integration.
+- Add kill feed, HUD polish, additional UI sounds, and broader audio mixing controls.
 
 Deferred:
 - Multiplayer, matchmaking, authoritative server state, network interpolation, and lag compensation.
@@ -56,7 +56,7 @@ Deferred:
 For now, the game ships with **3 heroes**. Each hero has:
 - A GLTF/GLB model with skeleton
 - Animation clips: `idle`, `run`, `attack`, `death`
-- 2 unique skills with cooldowns
+- 3 active skills with cooldowns
 - A circle collider radius
 
 ---
@@ -345,5 +345,6 @@ Optional later audio:
 | M17 | Local match rules and HUD | Local Match | 🟨 Medium |
 | M18 | Simple enemy AI | Local Match | 🟧 High |
 | M19 | Minimap and kill feed polish | Polish | 🟧 High |
+| M20 | Audio system | Polish | 🟨 Medium |
 
 ---

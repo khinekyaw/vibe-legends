@@ -6,9 +6,16 @@ Read `AGENTS.md` and `PLANS.md` before starting feature work.
 
 ## Current State
 
-- Phase 1 complete: Three.js scene, GLB character loading, skeleton animation playback, animation crossfades.
-- Phase 2 complete: keyboard movement, click/tap move, facing direction, movement-driven animation state, attack trigger.
-- Phase 3 in progress: map GLB is loaded as the arena, both characters render on the map, selected hero camera follow is active.
+- Local single-player MOBA lane prototype.
+- Minimal hero select with 3D preview and Start Match.
+- 3v3 local match: 1 blue player hero, 2 allied blue AI heroes, and 3 red AI heroes.
+- Alice, Ruby, and Layla are playable with basic attacks, 3 skills, cooldowns, damage, death, respawn, levels, and scaling HP/damage.
+- AI heroes move down lane, steer around objectives, attack valid targets, and cast skills when useful.
+- Minions spawn in waves, move down lane, and attack minions, heroes, towers, and nexuses.
+- Towers and nexuses have local targeting, health bars, attack VFX/SFX, and match-ending Victory/Defeat rules.
+- HUD includes match clock, kill count, player HP/XP/level, nearest enemy HP/level, skill cooldowns, respawn countdown, minimap, and match result overlay.
+- World-space bars use team colors: allied health is green and enemies are red.
+- Audio first pass is wired for looping BGM, hero basic/skill cues, minion attacks, and tower attacks.
 
 ## Run
 
@@ -22,10 +29,15 @@ Local app: `http://127.0.0.1:5173/`
 
 ## Important Files
 
-- `src/core/SceneManager.ts`: Three.js scene orchestration, input-driven hero control, camera follow.
+- `src/core/SceneManager.ts`: Main Three.js scene orchestration and match update loop.
 - `src/core/sceneConfig.ts`: Hero asset mappings, map constants, shared scene status types.
+- `src/core/matchTypes.ts`: Match/team/entity state types shared by scene helpers.
+- `src/core/matchRoster.ts`: Local 3v3 roster setup.
+- `src/core/sceneHud.ts`: World-to-HUD/minimap status projection helpers.
+- `src/core/sceneMath.ts`: Shared scene math helpers.
+- `src/core/objectiveModels.ts`: Objective model loading helpers.
 - `src/entities/HeroModel.ts`: Hero GLB setup, placeholder heroes, animation actions and state transitions.
-- `src/map/MapModel.ts`: Map GLB setup, normalization, fallback ground, movement bounds.
+- `src/systems/AudioManager.ts`: Audio preload/playback, volume buses, and event cue helpers.
 - `src/core/InputManager.ts`: WASD/arrows, Space attack, click/tap move pointer commands.
 - `src/App.tsx`: React shell and compact HUD.
 - `src/App.css`: fullscreen canvas and HUD styling.
@@ -37,56 +49,63 @@ Local app: `http://127.0.0.1:5173/`
 ```text
 public/assets/models/alice/model.glb
 public/assets/models/ruby/model.glb
-public/assets/models/map/model.glb
+public/assets/models/layla/model.glb
+public/assets/models/minion/model.glb
+public/assets/models/map/tower1.glb
+public/assets/models/map/tower2.glb
+public/assets/models/map/nexus.glb
+
+public/assets/audio/music/match_theme.mp3
+public/assets/audio/heroes/alice/basic_attack.mp3
+public/assets/audio/heroes/alice/skill1.mp3
+public/assets/audio/heroes/alice/skill2.mp3
+public/assets/audio/heroes/alice/skill3.mp3
+public/assets/audio/heroes/ruby/basic_attack.mp3
+public/assets/audio/heroes/ruby/skill1.mp3
+public/assets/audio/heroes/ruby/skill2.mp3
+public/assets/audio/heroes/ruby/skill3.mp3
+public/assets/audio/heroes/layla/basic_attack.mp3
+public/assets/audio/heroes/layla/skill1.mp3
+public/assets/audio/heroes/layla/skill2.mp3
+public/assets/audio/heroes/layla/skill3.mp3
+public/assets/audio/minions/basic_attack.mp3
+public/assets/audio/objectives/tower_attack.mp3
 ```
 
 Do not invent final production assets silently. If a milestone needs a new model, animation file, sound, texture, UI art, VFX sprite, or branded reference asset, ask the user first.
 
 ## Character Notes
 
-Both hero GLBs contain their own animations. Use the model clips directly; do not add procedural character animation unless the user asks.
+Hero GLBs contain their own animations. Use the model clips directly; do not add procedural character animation unless the user asks.
 
 Current clip mappings:
 
 - Alice: `fight_idle`, `run`, `attack1`, `dead`
 - Ruby: `fight_idle`, `run`, `attack1`, `dead`
+- Layla: configured in `src/core/sceneConfig.ts`
 
 Controls:
 
-- `1` selects Alice
-- `2` selects Ruby
 - WASD/arrows move selected hero
 - Click/tap moves selected hero toward the clicked map point
 - Space triggers attack
-- `X` triggers death debug state
-- `I` triggers idle debug state
+- Q/E/R trigger hero skills
 
 Ruby had an off-center rotation issue because her weapon affects the bounding box. The fix uses skeleton/body pivot names in `src/entities/HeroModel.ts` instead of centering only by full mesh bounds.
 
 ## Map Notes
 
-`public/assets/models/map/model.glb` contains two visible layers:
+The current arena is a modular single-lane Brawl-style bridge built from primitive geometry, textures, wall colliders, and objective model slots. Towers and nexuses use supplied GLB files under `public/assets/models/map/`.
 
-- Real playable arena: upper layer around original GLB `y ~= 305`
-- Small duplicate/preview layer: lower layer around original GLB `y = 0`
+Keep objective and roster data structured. Local player/AI state already includes stable IDs, team, controller, and spawn metadata so the gameplay layer can later be adapted for network multiplayer without rewriting every entity reference.
 
-Do not anchor the map to the GLB's lowest Y value. `src/map/MapModel.ts` detects the upper main layer and uses the playable surface as world `Y = 0`.
+Current map constants and hero stats live in `src/core/sceneConfig.ts`.
 
-Manual map offset is here:
+## Audio Notes
 
-```ts
-map.position.set(-centeredOffset.x, -surfaceY * scale, -centeredOffset.z)
-```
+Audio is managed through `src/systems/AudioManager.ts` with separate buses for music, heroes, minions, objectives, and UI. Match music starts from the Start Match button so browser audio unlock happens from a user gesture.
 
-Current map constants live in `src/core/sceneConfig.ts`:
-
-- `MAP_MODEL_URL`
-- `MAP_WORLD_SIZE` (`88` as of the current map scale)
-- `MAP_ROTATION_Y` (`Math.PI / 2` so lanes read bottom-left to top-right in the camera view)
-- `MAP_SURFACE_NAME_HINTS`
-- `MAP_LIMIT`
-
-Movement bounds are calculated from the transformed upper map layer after scaling and rotation. Do not replace this with a fixed square clamp unless the map/collision plan changes.
+The prototype currently uses `.mp3` files. For final web assets, prefer trimmed `.ogg` files with `.mp3` fallback where needed.
 
 ## UI Direction
 
@@ -94,14 +113,8 @@ Keep in-app UI compact and game-like. Do not add paragraphs explaining controls,
 
 ## Next Likely Work
 
-Phase 3 cleanup:
-
-- Tune map scale/camera framing if needed.
-- Decide whether to hide/remove the lower duplicate layer completely.
-- Add any visual-only static prop handling only if separate assets are supplied or clearly present in the map GLB.
-
-Phase 4:
-
-- Add collision boundaries.
-- Either ask the user for collider/blocker data or create simple invisible bounds from the current map.
-- Add debug collider visualization.
+- Tune AI priorities, wave timing, attack timing, and combat balance after playtesting.
+- Add kill feed and polish minimap/HUD layout.
+- Add UI/match result sounds, hero death/level-up sounds, and per-skin audio mapping.
+- Continue splitting `SceneManager.ts` when new systems become stable enough to extract.
+- Multiplayer remains deferred; keep new gameplay events deterministic and data-driven so they can later be serialized.
