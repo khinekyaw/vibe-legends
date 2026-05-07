@@ -9,7 +9,8 @@ type AnimatedEffect = THREE.Object3D & {
     createdAt: number
     duration: number
     end?: THREE.Vector3
-    kind: 'beam' | 'burst' | 'projectile' | 'pulse' | 'slash' | 'static-circle' | 'vortex'
+    followHero?: HeroInstance
+    kind: 'beam' | 'burst' | 'projectile' | 'pulse' | 'range-circle' | 'slash' | 'vortex'
     start?: THREE.Vector3
   }
 }
@@ -46,6 +47,8 @@ export class CombatEffects {
         this.updateBeam(effect, progress)
       } else if (kind === 'burst') {
         this.updateBurst(effect, progress)
+      } else if (kind === 'range-circle') {
+        this.updateRangeCircle(effect)
       }
 
       if (progress >= 1) {
@@ -63,18 +66,21 @@ export class CombatEffects {
     this.createGroundPulse(center, radius, color, duration)
   }
 
-  createStaticCircle(center: THREE.Vector3, radius: number, color: number, duration: number) {
+  createHeroRangeCircle(hero: HeroInstance, radius: number, color: number, duration: number) {
+    this.removeHeroRangeCircle(hero)
+
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(radius, 0.035, 10, 96),
       this.createMaterial(color, 0.72),
     ) as unknown as AnimatedEffect
 
-    ring.position.set(center.x, 0.11, center.z)
+    ring.position.set(hero.anchor.x, 0.11, hero.anchor.z)
     ring.rotation.x = Math.PI / 2
     ring.userData = {
       createdAt: performance.now() / 1000,
       duration,
-      kind: 'static-circle',
+      followHero: hero,
+      kind: 'range-circle',
     }
     this.group.add(ring)
   }
@@ -294,6 +300,29 @@ export class CombatEffects {
   private updateBurst(effect: AnimatedEffect, progress: number) {
     effect.scale.setScalar(0.66 + progress * 0.72)
     this.setOpacity(effect, 1 - progress)
+  }
+
+  private updateRangeCircle(effect: AnimatedEffect) {
+    const hero = effect.userData.followHero
+
+    if (!hero) {
+      return
+    }
+
+    effect.position.set(hero.anchor.x, 0.11, hero.anchor.z)
+  }
+
+  private removeHeroRangeCircle(hero: HeroInstance) {
+    ;[...this.group.children].forEach((object) => {
+      const effect = object as AnimatedEffect
+
+      if (effect.userData.kind !== 'range-circle' || effect.userData.followHero !== hero) {
+        return
+      }
+
+      object.removeFromParent()
+      this.disposeObject(object)
+    })
   }
 
   private createMaterial(color: number, opacity: number) {

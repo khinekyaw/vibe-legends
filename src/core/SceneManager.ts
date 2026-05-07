@@ -68,6 +68,7 @@ import type { MinionCombatState, ObjectiveCombatState } from '../ui/WorldHealthB
 
 const HERO_AI_AGGRO_RANGE = 8.5
 const HERO_KILL_XP_REWARD = 220
+const RUBY_EFFECT_COLOR = 0xff4b65
 const MINION_AGGRO_RANGE = 6
 const MINION_ATTACK_DAMAGE = 34
 const MINION_ATTACK_LOCK_SECONDS = 0.52
@@ -751,7 +752,7 @@ export class SceneManager {
 
   private createHeroBasicAttackEffect(hero: HeroInstance, target: THREE.Vector3) {
     if (hero.name === 'Ruby') {
-      this.combatEffects.createForward(hero, 1.55, 1.05, 0xf5d168, 0.2)
+      this.combatEffects.createForward(hero, 1.55, 1.05, RUBY_EFFECT_COLOR, 0.2)
       return
     }
 
@@ -763,12 +764,12 @@ export class SceneManager {
   private showBasicAttackRange(hero: HeroInstance) {
     const kit = HERO_KITS[hero.name]
     const color = hero.name === 'Ruby'
-      ? 0xf5d168
+      ? RUBY_EFFECT_COLOR
       : hero.name === 'Layla'
         ? 0x7ae8ff
         : 0xb64cff
 
-    this.combatEffects.createStaticCircle(hero.anchor, kit.attack.range, color, 0.55)
+    this.combatEffects.createHeroRangeCircle(hero, kit.attack.range, color, 0.55)
   }
 
   private castSkill(hero: HeroInstance, slot: SkillSlot) {
@@ -809,7 +810,7 @@ export class SceneManager {
     const target = this.getEnemyHero(hero)
 
     if (slot === 'skill1') {
-      this.combatEffects.createForward(hero, 4.2, 1.45, 0xff4b65, 0.28)
+      this.combatEffects.createForward(hero, 4.2, 1.45, RUBY_EFFECT_COLOR, 0.28)
       this.damageEnemyMinionsInForwardBox(hero, 4.2, 1.45, 150)
 
       if (target && isInForwardBox(hero, target, 4.2, 1.45)) {
@@ -821,7 +822,7 @@ export class SceneManager {
     }
 
     if (slot === 'skill2') {
-      this.combatEffects.createVortex(hero.anchor, 2.05, 0xff4b65, 0.44)
+      this.combatEffects.createVortex(hero.anchor, 2.05, RUBY_EFFECT_COLOR, 0.44)
       this.damageEnemyMinionsInRadius(hero, 2.05, 130)
 
       if (target && isInRadius(hero, target, 2.05)) {
