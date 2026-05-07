@@ -23,22 +23,30 @@ The active prototype is now a **local single-player MOBA lane**. Multiplayer is 
 Implemented:
 - Three.js scene, camera follow, GLB hero loading, animation state playback, and placeholder fallbacks.
 - Keyboard movement, click-to-move, basic attacks, skills, cooldowns, damage, death, and respawn.
+- Character turning now uses shortest-angle rotation, and base hero movement speed is tuned slower for better control.
 - Modular Brawl-style single-lane map with floor/wall textures, objective colliders, towers, and nexuses.
-- Player side is blue/bottom-left by default. The player chooses Alice, Ruby, or Layla at match start.
-- Enemy side is red/top-right. The unselected hero spawns at the enemy base and stays idle until simple AI is added.
-- Player and enemy spawn at their own base on game start and after death.
+- Player side is blue/bottom-left by default. The player chooses Alice, Ruby, or Layla from a minimal hero select screen with 3D hero preview and a Start Match button.
+- Local matches are now 3v3: 1 player-controlled blue hero, 2 allied blue AI heroes, and 3 red AI heroes. Hero slots carry stable participant IDs, team, controller, and spawn offset metadata to keep the path clear for later multiplayer.
+- All heroes spawn at their own base on game start and after death.
 - Tower and nexus health bars render in world space without objective name labels.
 - Towers and nexuses auto-fire at enemy heroes in range.
 - Player basic attacks can damage enemy towers and the enemy nexus.
 - Minion waves spawn 3 smaller minions per team, use `public/assets/models/minion/model.glb`, show health bars, move down lane, and basic attack enemy minions, heroes, and objectives.
-- The red-side enemy hero has simple local AI: move down lane, steer around objective colliders, acquire enemies/objectives, and basic attack when in range.
-- HUD includes player HP, enemy HP, skill buttons, respawn countdown, kill count, minimap, and win/lose overlay.
+- Allied and enemy AI heroes move down lane, steer around objective colliders, acquire enemies/objectives, and basic attack only when valid targets are in range.
+- Heroes have a local level system. Team XP from minion and hero kills increases hero level up to 15, scaling max HP and hero damage.
+- HUD includes player HP, XP/level, nearest enemy HP/level, skill buttons, respawn countdown, kill count, match clock, minimap, and win/lose overlay.
+- Respawn duration scales with match duration, starting at 5 seconds and increasing by 1 second per match minute up to 20 seconds.
+- World-space hero health bars show hero level. Allied hero, minion, tower, and base bars use green; enemy bars use red. HUD panels layer above world-space bars.
 - Temporary 3D combat VFX cover tower shots, Alice projectiles, Ruby slashes, Layla energy shots, AoE pulses, and impact bursts.
+- Player basic attack shows a static range ring only when no valid target is in range. The ring follows the player, replaces older range rings, and uses hero-themed colors.
+- Ruby's basic attack and attack range ring now use the same red effect color as Ruby's skills. Layla's model renders 20% smaller than the shared normalized hero size.
+- First audio pass is wired with looping match BGM and Layla-only basic attack / skill SFX using supplied `.mp3` fallback assets.
+- `SceneManager.ts` has been partially split into focused modules for match roster setup, shared match types, scene math helpers, objective model loading, and HUD/minimap status projection.
 - Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
 
 Next:
 - Tune minion/hero AI priorities, wave timing, attack timing, and combat balance after playtesting.
-- Add kill feed and HUD polish.
+- Add kill feed, HUD polish, and audio system integration.
 
 Deferred:
 - Multiplayer, matchmaking, authoritative server state, network interpolation, and lag compensation.
@@ -207,23 +215,25 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 
 ### M17 — Local match rules and HUD
 - Lock the local player to the blue/bottom-left side and spawn them at the blue base
-- Let the player choose Alice, Ruby, or Layla before the local match starts
-- Spawn the enemy at the red base; keep the enemy idle until simple AI is added
-- Respawn both heroes at their own base after death
+- Let the player choose Alice, Ruby, or Layla before the local match starts, with a simple 3D preview and explicit Start Match button
+- Spawn a 3v3 local roster: 1 player and 5 AI heroes, split into blue and red teams
+- Respawn heroes at their own base after death, with respawn time scaling by match duration
 - Let heroes damage enemy towers and nexuses
 - End the match when a nexus is destroyed
 - Show Victory or Defeat based on which nexus fell
 - Track player and enemy kill counts
+- Track match time with a top HUD clock
+- Track hero levels and XP; scale hero max HP and hero damage by level
 - **Skill HUD**: Bottom-right skill buttons with icons and cooldown overlays
-- **Player HUD**: Player HP, enemy HP, respawn countdown, and kill count
+- **Player HUD**: Player HP, XP/level, nearest enemy HP/level, respawn countdown, and kill count
 - **Match end screen**: Centered win/lose result overlay
 
 ### M18 — Simple enemy AI
 - Spawn 3 minions per team per wave and move them down the lane
 - Minions basic attack enemy minions, heroes, towers, and nexus
-- Minions and enemy hero steer around tower/base colliders while moving down lane
-- Show world-space minion health bars and minimap dots
-- Move the red-side hero from red base down the lane
+- Minions and AI heroes steer around tower/base colliders while moving down lane
+- Show world-space minion and hero health bars with team colors and hero levels
+- Move allied and enemy AI heroes from their bases down the lane
 - Prefer attacking the player when in range
 - Attack enemy minions, towers, and nexus when no hero target is available
 - Stop acting while dead and resume from red base after respawn
@@ -234,6 +244,48 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 - **Fog of war**: Mask minimap outside your hero's vision radius
 - **Kill feed**: Sliding notification panel (e.g. "Hero A killed Hero B")
 - **HUD polish**: Tighten mobile layout, portrait treatment, and objective status
+
+### M20 — Audio system
+- Add a small `AudioManager` that owns preload, volume groups, mute/pause, and one-shot playback.
+- Use separate volume buses for `music`, `hero`, `minion`, `objective`, and `ui` so mixing can be tuned without touching gameplay code.
+- Start looping background music after match start, with browser-safe user gesture unlock from the Start Match button.
+- Play one-shot hero basic attack and skill sounds from combat events.
+- Play minion and tower attack sounds from their local attack events.
+- Keep sound event names data-driven by hero and action so future skins/network events can reuse the same interface.
+- Add cooldown/throttling for repeated minion/tower sounds so team fights do not become too loud.
+- Recommended audio formats: `.ogg` for shipped web assets, with `.mp3` fallback if needed. Keep short SFX mono or narrow stereo, normalized consistently, and trimmed with minimal silence.
+- Current prototype audio uses `.mp3` fallback files for BGM and Layla only.
+
+Expected audio asset paths:
+
+```
+public/assets/audio/music/match_theme.ogg
+
+public/assets/audio/heroes/alice/basic_attack.ogg
+public/assets/audio/heroes/alice/skill1.ogg
+public/assets/audio/heroes/alice/skill2.ogg
+public/assets/audio/heroes/alice/skill3.ogg
+
+public/assets/audio/heroes/ruby/basic_attack.ogg
+public/assets/audio/heroes/ruby/skill1.ogg
+public/assets/audio/heroes/ruby/skill2.ogg
+public/assets/audio/heroes/ruby/skill3.ogg
+
+public/assets/audio/heroes/layla/basic_attack.ogg
+public/assets/audio/heroes/layla/skill1.ogg
+public/assets/audio/heroes/layla/skill2.ogg
+public/assets/audio/heroes/layla/skill3.ogg
+
+public/assets/audio/minions/basic_attack.ogg
+public/assets/audio/objectives/tower_attack.ogg
+```
+
+Optional later audio:
+- `public/assets/audio/ui/match_start.ogg`
+- `public/assets/audio/ui/victory.ogg`
+- `public/assets/audio/ui/defeat.ogg`
+- `public/assets/audio/heroes/{hero}/death.ogg`
+- `public/assets/audio/heroes/{hero}/level_up.ogg`
 
 ---
 

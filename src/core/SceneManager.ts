@@ -64,6 +64,7 @@ import {
   type SkillSlot,
 } from '../systems/CombatSystem'
 import { CombatEffects } from '../systems/CombatEffects'
+import { audioManager } from '../systems/AudioManager'
 import type { MinionCombatState, ObjectiveCombatState } from '../ui/WorldHealthBars'
 
 const HERO_AI_AGGRO_RANGE = 8.5
@@ -695,6 +696,7 @@ export class SceneManager {
 
     this.faceTarget(hero, targetPosition)
     this.playHeroState(hero, 'attack')
+    audioManager.playHeroCue(hero.name, 'basic_attack')
 
     if (heroTarget) {
       this.createHeroBasicAttackEffect(hero, heroTarget.anchor)
@@ -797,6 +799,7 @@ export class SceneManager {
     if (hero.name === 'Ruby') {
       this.castRubySkill(hero, slot, now)
     } else if (hero.name === 'Layla') {
+      audioManager.playHeroCue(hero.name, slot)
       this.castLaylaSkill(hero, slot, now)
     } else {
       this.castAliceSkill(hero, slot, now)

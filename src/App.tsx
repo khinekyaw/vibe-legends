@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { SceneManager } from './core/SceneManager'
 import type { SceneStatus } from './core/sceneConfig'
+import { audioManager } from './systems/AudioManager'
 import { getHeroXpToNextLevel } from './systems/CombatSystem'
 import { HeroPreview } from './ui/HeroPreview'
 
@@ -106,6 +107,7 @@ function App() {
   }, [matchHeroName])
 
   const startMatch = () => {
+    audioManager.startMatchMusic()
     setStatus(createInitialStatus(selectedHeroName, 6))
     setMatchHeroName(selectedHeroName)
   }
