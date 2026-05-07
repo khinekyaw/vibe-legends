@@ -14,6 +14,10 @@ const heroChoices = [
     name: 'Ruby',
     portrait: '/assets/images/ruby/ruby_icon.webp',
   },
+  {
+    name: 'Layla',
+    portrait: '/assets/images/layla/layla_icon.webp',
+  },
 ] as const
 
 type HeroChoiceName = (typeof heroChoices)[number]['name']
@@ -53,6 +57,20 @@ const skillIcons: Record<string, Record<SkillSlot, { alt: string; src: string }>
       src: '/assets/images/ruby/Im_Offended.webp',
     },
   },
+  Layla: {
+    skill1: {
+      alt: 'Malefic Bomb',
+      src: '/assets/images/layla/Malefic_Bomb.webp',
+    },
+    skill2: {
+      alt: 'Void Projectile',
+      src: '/assets/images/layla/Void_Projectile.webp',
+    },
+    skill3: {
+      alt: 'Destruction Rush',
+      src: '/assets/images/layla/Destruction_Rush.webp',
+    },
+  },
 }
 
 function App() {
@@ -81,7 +99,7 @@ function App() {
       skill2: 0,
       skill3: 0,
     },
-    total: 2,
+    total: heroChoices.length,
   })
 
   useEffect(() => {

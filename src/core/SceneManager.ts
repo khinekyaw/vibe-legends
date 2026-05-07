@@ -706,35 +706,21 @@ export class SceneManager {
     this.playHeroState(hero, 'attack')
 
     if (heroTarget) {
-      if (hero.name === 'Alice') {
-        this.combatEffects.createProjectile(hero.anchor, heroTarget.anchor, 0xb64cff, 0.28, 0.14)
-      } else {
-        this.combatEffects.createForward(hero, 1.55, 1.05, 0xf5d168, 0.2)
-      }
-
+      this.createHeroBasicAttackEffect(hero, heroTarget.anchor)
       this.damageHero(heroTarget, kit.attack.damage, heroTeam)
       return
     }
 
     if (minionTarget) {
-      if (hero.name === 'Alice') {
-        this.combatEffects.createProjectile(hero.anchor, minionTarget.anchor, 0xb64cff, 0.28, 0.12)
-      } else {
-        this.combatEffects.createForward(hero, 1.55, 1.05, 0xf5d168, 0.2)
-      }
-
+      this.createHeroBasicAttackEffect(hero, minionTarget.anchor)
       this.damageMinion(minionTarget, kit.attack.damage, heroTeam)
       return
     }
 
     if (objectiveTarget) {
-      if (hero.name === 'Alice') {
-        const targetPoint = objectiveTarget.position.clone()
-        targetPoint.y = 1.9
-        this.combatEffects.createProjectile(hero.anchor, targetPoint, 0xb64cff, 0.3, 0.15)
-      } else {
-        this.combatEffects.createForward(hero, kit.attack.range, 1.15, 0xf5d168, 0.22)
-      }
+      const targetPoint = objectiveTarget.position.clone()
+      targetPoint.y = 1.9
+      this.createHeroBasicAttackEffect(hero, targetPoint)
 
       this.damageObjective(objectiveTarget, kit.attack.damage, heroTeam)
     }
@@ -770,6 +756,17 @@ export class SceneManager {
     }
   }
 
+  private createHeroBasicAttackEffect(hero: HeroInstance, target: THREE.Vector3) {
+    if (hero.name === 'Ruby') {
+      this.combatEffects.createForward(hero, 1.55, 1.05, 0xf5d168, 0.2)
+      return
+    }
+
+    const color = hero.name === 'Layla' ? 0x7ae8ff : 0xb64cff
+    const radius = hero.name === 'Layla' ? 0.13 : 0.14
+    this.combatEffects.createProjectile(hero.anchor, target, color, 0.28, radius)
+  }
+
   private castSkill(hero: HeroInstance, slot: SkillSlot) {
     if (!ATTACK_RETURN_STATES.has(hero.currentState) || this.matchResult !== 'playing') {
       return false
@@ -794,6 +791,8 @@ export class SceneManager {
 
     if (hero.name === 'Ruby') {
       this.castRubySkill(hero, slot, now)
+    } else if (hero.name === 'Layla') {
+      this.castLaylaSkill(hero, slot, now)
     } else {
       this.castAliceSkill(hero, slot, now)
     }
@@ -839,6 +838,57 @@ export class SceneManager {
       this.damageHero(target, 260, heroTeam)
       this.applyStun(target, now + 0.5)
       this.pullTarget(target, hero.anchor, 1.35)
+    }
+  }
+
+  private castLaylaSkill(hero: HeroInstance, slot: SkillSlot, now: number) {
+    const target = this.getEnemyHero(hero)
+    const heroTeam = this.getHeroTeamForHero(hero)
+    const forward = getHeroForward(hero)
+
+    if (slot === 'skill1') {
+      const impact = hero.anchor.clone().addScaledVector(forward, 6.8)
+      this.clampToMapBounds(impact)
+      this.combatEffects.createProjectile(hero.anchor, impact, 0x5bdcff, 0.38, 0.16)
+      this.combatEffects.createBurst(impact, 0.72, 0x5bdcff, 0.28)
+      this.damageEnemyMinionsInForwardBox(hero, 6.8, 0.82, 180)
+
+      if (target && isInForwardBox(hero, target, 6.8, 0.82)) {
+        this.damageHero(target, 180, heroTeam)
+      }
+
+      return
+    }
+
+    if (slot === 'skill2') {
+      const impact = target && isInRadius(hero, target, 6.2)
+        ? target.anchor.clone()
+        : hero.anchor.clone().addScaledVector(forward, 5.6)
+      this.clampToMapBounds(impact)
+      this.combatEffects.createProjectile(hero.anchor, impact, 0xf6d65f, 0.34, 0.18)
+      this.combatEffects.createCircle(impact, 1.35, 0xf6d65f, 0.5)
+      this.combatEffects.createBurst(impact, 1.08, 0xf6d65f, 0.3)
+      this.damageEnemyMinionsNear(impact, heroTeam, 1.35, 165)
+
+      if (target && target.anchor.distanceTo(impact) <= 1.35) {
+        this.damageHero(target, 165, heroTeam)
+        this.applySlow(target, now + 1)
+      }
+
+      return
+    }
+
+    const range = 9.2
+    const width = 1.55
+    const beamEnd = hero.anchor.clone().addScaledVector(forward, range)
+    this.clampToMapBounds(beamEnd)
+    this.combatEffects.createForward(hero, range, width, 0x64f5ff, 0.52)
+    this.combatEffects.createProjectile(hero.anchor, beamEnd, 0x64f5ff, 0.28, 0.22)
+    this.combatEffects.createBurst(beamEnd, 1.25, 0x64f5ff, 0.36)
+    this.damageEnemyMinionsInForwardBox(hero, range, width, 320)
+
+    if (target && isInForwardBox(hero, target, range, width)) {
+      this.damageHero(target, 320, heroTeam)
     }
   }
 
@@ -1504,16 +1554,24 @@ export class SceneManager {
 
   private damageEnemyMinionsInRadius(hero: HeroInstance, radius: number, amount: number) {
     const heroTeam = this.getHeroTeamForHero(hero)
+    this.damageEnemyMinionsNear(hero.anchor, heroTeam, radius, amount)
+  }
 
+  private damageEnemyMinionsNear(
+    position: THREE.Vector3,
+    sourceTeam: TeamSide,
+    radius: number,
+    amount: number,
+  ) {
     this.minions.forEach((minion) => {
       const combat = this.minionCombat.get(minion)
 
-      if (!combat || combat.hp <= 0 || minion.team === heroTeam) {
+      if (!combat || combat.hp <= 0 || minion.team === sourceTeam) {
         return
       }
 
-      if (hero.anchor.distanceTo(minion.anchor) <= radius) {
-        this.damageMinion(minion, amount, heroTeam)
+      if (position.distanceTo(minion.anchor) <= radius) {
+        this.damageMinion(minion, amount, sourceTeam)
       }
     })
   }

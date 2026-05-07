@@ -29,6 +29,20 @@ export const HERO_ASSETS = [
     position: new THREE.Vector3(1.35, 0, -29.8),
     url: '/assets/models/ruby/model.glb',
   },
+  {
+    clips: {
+      attack: 'attack1',
+      death: 'dead',
+      idle: 'fight_idle',
+      run: 'run',
+      skill1: 'skill1',
+      skill2: 'skill2',
+      skill3: 'skill3',
+    },
+    name: 'Layla',
+    position: new THREE.Vector3(-1.35, 0, 29.8),
+    url: '/assets/models/layla/model.glb',
+  },
 ] as const
 
 export const MAP_WORLD_SIZE = 88

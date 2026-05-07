@@ -24,7 +24,7 @@ Implemented:
 - Three.js scene, camera follow, GLB hero loading, animation state playback, and placeholder fallbacks.
 - Keyboard movement, click-to-move, basic attacks, skills, cooldowns, damage, death, and respawn.
 - Modular Brawl-style single-lane map with floor/wall textures, objective colliders, towers, and nexuses.
-- Player side is blue/bottom-left by default. The player chooses Alice or Ruby at match start.
+- Player side is blue/bottom-left by default. The player chooses Alice, Ruby, or Layla at match start.
 - Enemy side is red/top-right. The unselected hero spawns at the enemy base and stays idle until simple AI is added.
 - Player and enemy spawn at their own base on game start and after death.
 - Tower and nexus health bars render in world space without objective name labels.
@@ -33,7 +33,7 @@ Implemented:
 - Minion waves spawn 3 smaller minions per team, use `public/assets/models/minion/model.glb`, show health bars, move down lane, and basic attack enemy minions, heroes, and objectives.
 - The red-side enemy hero has simple local AI: move down lane, steer around objective colliders, acquire enemies/objectives, and basic attack when in range.
 - HUD includes player HP, enemy HP, skill buttons, respawn countdown, kill count, minimap, and win/lose overlay.
-- Temporary 3D combat VFX cover tower shots, Alice projectiles, Ruby slashes, AoE pulses, and impact bursts.
+- Temporary 3D combat VFX cover tower shots, Alice projectiles, Ruby slashes, Layla energy shots, AoE pulses, and impact bursts.
 - Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
 
 Next:
@@ -45,7 +45,7 @@ Deferred:
 
 ## Characters
 
-For now, the game ships with **2 heroes** only. Each hero has:
+For now, the game ships with **3 heroes**. Each hero has:
 - A GLTF/GLB model with skeleton
 - Animation clips: `idle`, `run`, `attack`, `death`
 - 2 unique skills with cooldowns
@@ -180,6 +180,12 @@ Implementation note: Phase 3 originally used `public/assets/models/map/model.glb
 - Skill 2 (E): Don't Run, Wolf King! AoE stun and pull
 - Skill 3 (R): I'm Offended! forward sweep that pulls and stuns
 
+**Layla prototype kit:**
+- Basic attack: target-locked ranged energy shot
+- Skill 1 (Q): Malefic Bomb long projectile shot
+- Skill 2 (E): Void Projectile ranged AoE impact with slow
+- Skill 3 (R): Destruction Rush long forward blast
+
 Implementation note: current Phase 5 combat uses temporary colored geometry for hitboxes/VFX. Replace with supplied skill icons, particles, SFX, and MLBB-like visual assets when available.
 
 ---
@@ -201,7 +207,7 @@ Implementation note: current Phase 5 combat uses temporary colored geometry for 
 
 ### M17 — Local match rules and HUD
 - Lock the local player to the blue/bottom-left side and spawn them at the blue base
-- Let the player choose Alice or Ruby before the local match starts
+- Let the player choose Alice, Ruby, or Layla before the local match starts
 - Spawn the enemy at the red base; keep the enemy idle until simple AI is added
 - Respawn both heroes at their own base after death
 - Let heroes damage enemy towers and nexuses

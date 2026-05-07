@@ -90,6 +90,32 @@ export const HERO_KITS: Record<string, HeroKit> = {
       },
     },
   },
+  Layla: {
+    attack: {
+      damage: 72,
+      range: 5.2,
+    },
+    skills: {
+      skill1: {
+        animationState: 'skill1',
+        cooldown: 5,
+        name: 'Malefic Bomb',
+        slot: 'skill1',
+      },
+      skill2: {
+        animationState: 'skill2',
+        cooldown: 7,
+        name: 'Void Projectile',
+        slot: 'skill2',
+      },
+      skill3: {
+        animationState: 'skill3',
+        cooldown: 28,
+        name: 'Destruction Rush',
+        slot: 'skill3',
+      },
+    },
+  },
 }
 
 export function createHeroCombatState(maxHp: number): HeroCombatState {
