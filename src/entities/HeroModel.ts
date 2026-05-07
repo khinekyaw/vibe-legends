@@ -28,9 +28,14 @@ export function createHeroFromModel(
   visual.add(model)
   heroGroup.add(visual)
   normalizeHero(heroGroup)
+  heroGroup.scale.multiplyScalar(getHeroScaleMultiplier(asset.name))
   heroGroup.position.copy(asset.position)
 
   return createHeroInstance(asset, heroGroup, model, animations, onAttackFinished)
+}
+
+function getHeroScaleMultiplier(heroName: string) {
+  return heroName === 'Layla' ? 0.8 : 1
 }
 
 export function createPlaceholderHero(asset: HeroAsset): HeroInstance {

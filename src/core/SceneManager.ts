@@ -627,6 +627,8 @@ export class SceneManager {
       if (this.castBasicAttack(hero)) {
         return
       }
+
+      this.showBasicAttackRange(hero)
     }
 
     this.updatePointerTarget(hero)
@@ -696,7 +698,7 @@ export class SceneManager {
     )
     this.clampToMapBounds(hero.anchor)
     const targetAngle = Math.atan2(direction.x, direction.z)
-    hero.facingAngle = THREE.MathUtils.damp(
+    hero.facingAngle = dampAngle(
       hero.facingAngle,
       targetAngle,
       ROTATION_SMOOTHING,
@@ -815,6 +817,17 @@ export class SceneManager {
     const color = hero.name === 'Layla' ? 0x7ae8ff : 0xb64cff
     const radius = hero.name === 'Layla' ? 0.13 : 0.14
     this.combatEffects.createProjectile(hero.anchor, target, color, 0.28, radius)
+  }
+
+  private showBasicAttackRange(hero: HeroInstance) {
+    const kit = HERO_KITS[hero.name]
+    const color = hero.name === 'Ruby'
+      ? 0xf5d168
+      : hero.name === 'Layla'
+        ? 0x7ae8ff
+        : 0xb64cff
+
+    this.combatEffects.createCircle(hero.anchor, kit.attack.range, color, 0.42)
   }
 
   private castSkill(hero: HeroInstance, slot: SkillSlot) {
@@ -1877,4 +1890,13 @@ function createMatchHeroSlots(playerHeroName: string): MatchHeroSlot[] {
       team: 'red',
     },
   ]
+}
+
+function dampAngle(current: number, target: number, lambda: number, delta: number) {
+  const shortestDelta = THREE.MathUtils.euclideanModulo(
+    target - current + Math.PI,
+    Math.PI * 2,
+  ) - Math.PI
+
+  return current + shortestDelta * (1 - Math.exp(-lambda * delta))
 }
