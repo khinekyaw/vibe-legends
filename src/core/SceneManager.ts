@@ -14,10 +14,8 @@ import {
 } from '../entities/MinionModel'
 import type { MapBounds } from '../map/MapModel'
 import {
-  createObjectiveModelInstance,
   createObjectiveColliders,
   createObjectiveStructures,
-  getObjectiveModelUrl,
   type ObjectiveDefinition,
   OBJECTIVE_LAYOUT,
 } from '../map/ObjectiveStructures'
@@ -44,12 +42,15 @@ import {
   ROTATION_SMOOTHING,
   SKY_COLOR,
   TARGET_EPSILON,
-  type HeroAsset,
   type HeroState,
   type MatchResult,
-  type MinimapMarker,
   type SceneStatus,
 } from './sceneConfig'
+import { createMatchHeroSlots } from './matchRoster'
+import { createSceneStatus } from './SceneStatusPresenter'
+import { dampAngle } from './sceneMath'
+import type { CombatTarget, MatchHeroSlot, TeamSide } from './matchTypes'
+import { loadObjectiveModels } from './ObjectiveModelLoader'
 import {
   applyDamage,
   createHeroCombatState,
@@ -61,27 +62,7 @@ import {
   type SkillSlot,
 } from '../systems/CombatSystem'
 import { CombatEffects } from '../systems/CombatEffects'
-import {
-  projectObjectiveHealthBars,
-  projectMinionHealthBars,
-  projectWorldHealthBars,
-  type MinionCombatState,
-  type ObjectiveCombatState,
-} from '../ui/WorldHealthBars'
-
-type TeamSide = 'blue' | 'red'
-type HeroController = 'ai' | 'player'
-type MatchHeroSlot = {
-  asset: HeroAsset
-  controller: HeroController
-  id: string
-  spawnOffset: THREE.Vector2
-  team: TeamSide
-}
-type CombatTarget =
-  | { kind: 'hero'; hero: HeroInstance }
-  | { kind: 'minion'; minion: MinionInstance }
-  | { kind: 'objective'; objective: ObjectiveDefinition }
+import type { MinionCombatState, ObjectiveCombatState } from '../ui/WorldHealthBars'
 
 const HERO_AI_AGGRO_RANGE = 8.5
 const MINION_AGGRO_RANGE = 6
@@ -190,7 +171,7 @@ export class SceneManager {
     window.addEventListener('skill-command', this.handleSkillCommand)
     this.emitStatus('loading')
     this.loadBrawlMap()
-    this.loadObjectiveModels()
+    loadObjectiveModels(this.loader, this.objectiveModelSources, this.objectiveStructures)
     this.loadMinionModel()
     this.heroSlots.forEach((slot, index) => this.loadHeroModel(slot, index))
     this.animate()
@@ -251,40 +232,6 @@ export class SceneManager {
     )
   }
 
-  private loadObjectiveModels() {
-    const urls = [...new Set(OBJECTIVE_LAYOUT.map(getObjectiveModelUrl))]
-
-    Promise.all(
-      urls.map(
-        (url) =>
-          new Promise<void>((resolve) => {
-            this.loader.load(
-              url,
-              (gltf) => {
-                this.objectiveModelSources.set(url, gltf.scene)
-                resolve()
-              },
-              undefined,
-              () => resolve(),
-            )
-          }),
-      ),
-    ).then(() => {
-      OBJECTIVE_LAYOUT.forEach((objective) => {
-        const source = this.objectiveModelSources.get(getObjectiveModelUrl(objective))
-        const container = this.objectiveStructures.getObjectByName(objective.id)
-
-        if (!source || !container) {
-          return
-        }
-
-        this.disposeObjectivePlaceholder(container)
-        container.clear()
-        container.add(createObjectiveModelInstance(objective, source))
-      })
-    })
-  }
-
   private loadMinionModel() {
     this.loader.load(
       MINION_MODEL_URL,
@@ -300,20 +247,6 @@ export class SceneManager {
         this.nextMinionWaveAt = performance.now() / 1000
       },
     )
-  }
-
-  private disposeObjectivePlaceholder(object: THREE.Object3D) {
-    object.children.forEach((child) => {
-      child.traverse((descendant) => {
-        if (descendant instanceof THREE.Mesh) {
-          descendant.geometry.dispose()
-          const materials = Array.isArray(descendant.material)
-            ? descendant.material
-            : [descendant.material]
-          materials.forEach((material) => material.dispose())
-        }
-      })
-    })
   }
 
   private loadHeroModel(slot: MatchHeroSlot, index: number) {
@@ -1680,137 +1613,27 @@ export class SceneManager {
   }
 
   private emitStatus(mode: SceneStatus['mode']) {
-    const now = performance.now()
-    const selectedHero = this.heroes[this.playerHeroIndex]
-    const enemyHero = selectedHero
-      ? this.getClosestEnemyHero(selectedHero.anchor, this.getPlayerTeam(), Number.POSITIVE_INFINITY)
-      : undefined
-    const selectedCombat = selectedHero ? this.heroCombat.get(selectedHero) : undefined
-    const enemyCombat = enemyHero ? this.heroCombat.get(enemyHero) : undefined
-    const nowSeconds = now / 1000
-    const matchSeconds = this.getMatchSeconds(nowSeconds)
-    const respawnSeconds = Math.max(0, (selectedCombat?.respawnAt ?? 0) - nowSeconds)
+    const nowSeconds = performance.now() / 1000
 
-    this.onStatusChange({
-      enemyHp: Math.round(enemyCombat?.hp ?? HERO_MAX_HP),
-      enemyKills: this.kills.red,
-      enemyMaxHp: enemyCombat?.maxHp ?? HERO_MAX_HP,
-      healthBars: projectWorldHealthBars(
-        this.heroes,
-        this.heroCombat,
-        this.playerHeroIndex,
-        this.camera,
-        this.rendererWidth,
-        this.rendererHeight,
-        this.heroSlots.map((slot) => slot.id),
-        this.getAlliedHeroIndexes(),
-      ).concat(
-        projectMinionHealthBars(
-          this.minions,
-          this.minionCombat,
-          this.getPlayerTeam(),
-          this.camera,
-          this.rendererWidth,
-          this.rendererHeight,
-        ),
-        projectObjectiveHealthBars(
-          OBJECTIVE_LAYOUT,
-          this.objectiveCombat,
-          this.getPlayerTeam(),
-          this.camera,
-          this.rendererWidth,
-          this.rendererHeight,
-        ),
-      ),
-      loaded: this.loadedHeroes,
-      matchSeconds,
+    this.onStatusChange(createSceneStatus({
+      camera: this.camera,
+      heroCombat: this.heroCombat,
+      heroes: this.heroes,
+      heroSlots: this.heroSlots,
+      kills: this.kills,
+      loadedHeroes: this.loadedHeroes,
+      mapBounds: this.mapBounds,
       matchResult: this.matchResult,
-      minimap: {
-        markers: this.createMinimapMarkers(),
-      },
+      matchSeconds: this.getMatchSeconds(nowSeconds),
+      minionCombat: this.minionCombat,
+      minions: this.minions,
       mode,
-      playerKills: this.kills.blue,
-      respawnSeconds,
-      selectedHp: Math.round(selectedCombat?.hp ?? HERO_MAX_HP),
-      selectedHero: selectedHero?.name ?? this.heroSlots[this.playerHeroIndex]?.asset.name ?? 'Alice',
-      selectedMaxHp: selectedCombat?.maxHp ?? HERO_MAX_HP,
-      selectedState: selectedHero?.currentState ?? 'idle',
-      skillCooldowns: {
-        skill1: Math.max(0, (selectedCombat?.cooldowns.skill1 ?? 0) - nowSeconds),
-        skill2: Math.max(0, (selectedCombat?.cooldowns.skill2 ?? 0) - nowSeconds),
-        skill3: Math.max(0, (selectedCombat?.cooldowns.skill3 ?? 0) - nowSeconds),
-      },
-      total: this.heroSlots.length,
-    })
-  }
-
-  private createMinimapMarkers(): MinimapMarker[] {
-    const heroMarkers = this.heroes.filter(Boolean).map((hero, index) => {
-      const combat = this.heroCombat.get(hero)
-      const team = this.getHeroTeam(index)
-      const position = this.projectMinimapPosition(hero.anchor)
-
-      return {
-        alive: (combat?.hp ?? 0) > 0,
-        id: this.heroSlots[index]?.id ?? `hero-${hero.name}-${index}`,
-        isPlayer: index === this.playerHeroIndex,
-        kind: 'hero' as const,
-        team,
-        x: position.x,
-        y: position.y,
-      }
-    })
-
-    const objectiveMarkers = OBJECTIVE_LAYOUT.map((objective) => {
-      const combat = this.objectiveCombat.get(objective.id)
-      const position = this.projectMinimapPosition(objective.position)
-
-      return {
-        alive: (combat?.hp ?? 0) > 0,
-        id: objective.id,
-        kind: objective.kind,
-        team: objective.team,
-        x: position.x,
-        y: position.y,
-      }
-    })
-
-    const minionMarkers = this.minions.map((minion) => {
-      const combat = this.minionCombat.get(minion)
-      const position = this.projectMinimapPosition(minion.anchor)
-
-      return {
-        alive: (combat?.hp ?? 0) > 0,
-        id: minion.id,
-        kind: 'minion' as const,
-        team: minion.team,
-        x: position.x,
-        y: position.y,
-      }
-    })
-
-    return [...objectiveMarkers, ...minionMarkers, ...heroMarkers]
-  }
-
-  private getAlliedHeroIndexes() {
-    const playerTeam = this.getPlayerTeam()
-    return new Set(
-      this.heroSlots.flatMap((slot, index) => (
-        slot.team === playerTeam ? [index] : []
-      )),
-    )
-  }
-
-  private projectMinimapPosition(position: THREE.Vector3) {
-    const width = this.mapBounds.maxX - this.mapBounds.minX
-    const depth = this.mapBounds.maxZ - this.mapBounds.minZ
-    const x = width > 0 ? ((position.x - this.mapBounds.minX) / width) * 100 : 50
-    const y = depth > 0 ? ((position.z - this.mapBounds.minZ) / depth) * 100 : 50
-
-    return {
-      x: THREE.MathUtils.clamp(x, 0, 100),
-      y: THREE.MathUtils.clamp(y, 0, 100),
-    }
+      nowSeconds,
+      objectiveCombat: this.objectiveCombat,
+      playerHeroIndex: this.playerHeroIndex,
+      rendererHeight: this.rendererHeight,
+      rendererWidth: this.rendererWidth,
+    }))
   }
 
   private readonly handleSkillCommand = (event: Event) => {
@@ -1830,73 +1653,4 @@ export class SceneManager {
     const scaledDelay = RESPAWN_DELAY + Math.floor(this.getMatchSeconds() / 60) * RESPAWN_DELAY_PER_MINUTE
     return Math.min(RESPAWN_MAX_DELAY, scaledDelay)
   }
-}
-
-function createMatchHeroSlots(playerHeroName: string): MatchHeroSlot[] {
-  const playerAsset = HERO_ASSETS.find((asset) => asset.name === playerHeroName) ?? HERO_ASSETS[0]
-  const supportAssets = HERO_ASSETS.filter((asset) => asset.name !== playerAsset.name)
-  const blueAssets = [
-    playerAsset,
-    supportAssets[0] ?? HERO_ASSETS[1],
-    supportAssets[1] ?? HERO_ASSETS[2],
-  ]
-  const redAssets = [
-    HERO_ASSETS[0],
-    HERO_ASSETS[1],
-    HERO_ASSETS[2],
-  ]
-
-  return [
-    {
-      asset: blueAssets[0],
-      controller: 'player',
-      id: 'blue-player',
-      spawnOffset: new THREE.Vector2(0, 0),
-      team: 'blue',
-    },
-    {
-      asset: blueAssets[1],
-      controller: 'ai',
-      id: 'blue-ai-1',
-      spawnOffset: new THREE.Vector2(-1.9, 0.9),
-      team: 'blue',
-    },
-    {
-      asset: blueAssets[2],
-      controller: 'ai',
-      id: 'blue-ai-2',
-      spawnOffset: new THREE.Vector2(1.9, 0.9),
-      team: 'blue',
-    },
-    {
-      asset: redAssets[0],
-      controller: 'ai',
-      id: 'red-ai-1',
-      spawnOffset: new THREE.Vector2(0, 0),
-      team: 'red',
-    },
-    {
-      asset: redAssets[1],
-      controller: 'ai',
-      id: 'red-ai-2',
-      spawnOffset: new THREE.Vector2(-1.9, 0.9),
-      team: 'red',
-    },
-    {
-      asset: redAssets[2],
-      controller: 'ai',
-      id: 'red-ai-3',
-      spawnOffset: new THREE.Vector2(1.9, 0.9),
-      team: 'red',
-    },
-  ]
-}
-
-function dampAngle(current: number, target: number, lambda: number, delta: number) {
-  const shortestDelta = THREE.MathUtils.euclideanModulo(
-    target - current + Math.PI,
-    Math.PI * 2,
-  ) - Math.PI
-
-  return current + shortestDelta * (1 - Math.exp(-lambda * delta))
 }
