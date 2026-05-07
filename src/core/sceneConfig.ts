@@ -106,6 +106,7 @@ export type SceneStatus = {
     y: number
   }>
   loaded: number
+  matchSeconds: number
   matchResult: MatchResult
   minimap: {
     markers: MinimapMarker[]
@@ -127,7 +128,9 @@ export const ATTACK_RETURN_STATES = new Set<HeroState>(['idle', 'run'])
 export const ACTION_RETURN_STATES = new Set<HeroState>(['attack', 'skill1', 'skill2', 'skill3'])
 export const HERO_MAX_HP = 1200
 export const RESPAWN_DELAY = 5
-export const HERO_SPEED = MAP_WORLD_SIZE * 0.08
+export const RESPAWN_DELAY_PER_MINUTE = 1
+export const RESPAWN_MAX_DELAY = 20
+export const HERO_SPEED = MAP_WORLD_SIZE * 0.065
 export const MAP_LIMIT = MAP_WORLD_SIZE * 0.48
 export const ROTATION_SMOOTHING = 16
 export const TARGET_EPSILON = 0.06

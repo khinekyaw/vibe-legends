@@ -39,6 +39,8 @@ import {
   HERO_SPEED,
   MAP_WORLD_SIZE,
   RESPAWN_DELAY,
+  RESPAWN_DELAY_PER_MINUTE,
+  RESPAWN_MAX_DELAY,
   ROTATION_SMOOTHING,
   SKY_COLOR,
   TARGET_EPSILON,
@@ -68,6 +70,14 @@ import {
 } from '../ui/WorldHealthBars'
 
 type TeamSide = 'blue' | 'red'
+type HeroController = 'ai' | 'player'
+type MatchHeroSlot = {
+  asset: HeroAsset
+  controller: HeroController
+  id: string
+  spawnOffset: THREE.Vector2
+  team: TeamSide
+}
 type CombatTarget =
   | { kind: 'hero'; hero: HeroInstance }
   | { kind: 'minion'; minion: MinionInstance }
@@ -141,7 +151,8 @@ export class SceneManager {
   private readonly scene = new THREE.Scene()
   private animationFrame = 0
   private loadedHeroes = 0
-  private readonly heroAssets: HeroAsset[]
+  private matchStartedAt = 0
+  private readonly heroSlots: MatchHeroSlot[]
   private matchResult: MatchResult = 'playing'
   private readonly onStatusChange: (status: SceneStatus) => void
   private readonly playerHeroIndex = 0
@@ -156,7 +167,7 @@ export class SceneManager {
     playerHeroName = 'Alice',
   ) {
     this.onStatusChange = onStatusChange
-    this.heroAssets = createMatchHeroAssets(playerHeroName)
+    this.heroSlots = createMatchHeroSlots(playerHeroName)
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       canvas,
@@ -174,13 +185,14 @@ export class SceneManager {
   }
 
   start() {
+    this.matchStartedAt = performance.now() / 1000
     this.inputManager = new InputManager(this.renderer.domElement)
     window.addEventListener('skill-command', this.handleSkillCommand)
     this.emitStatus('loading')
     this.loadBrawlMap()
     this.loadObjectiveModels()
     this.loadMinionModel()
-    this.heroAssets.forEach((asset, index) => this.loadHeroModel(asset, index))
+    this.heroSlots.forEach((slot, index) => this.loadHeroModel(slot, index))
     this.animate()
   }
 
@@ -304,13 +316,18 @@ export class SceneManager {
     })
   }
 
-  private loadHeroModel(asset: HeroAsset, index: number) {
+  private loadHeroModel(slot: MatchHeroSlot, index: number) {
+    const { asset } = slot
+
     this.loader.load(
       asset.url,
       (gltf) => {
         const heroInstance = createHeroFromModel(asset, gltf.scene, gltf.animations, (hero) => {
           this.playHeroState(hero, this.getMovementState(hero))
         })
+        heroInstance.group.userData.participantId = slot.id
+        heroInstance.group.userData.controller = slot.controller
+        heroInstance.group.userData.team = slot.team
         this.characterGroup.add(heroInstance.group)
         this.heroes[index] = heroInstance
         this.heroCombat.set(heroInstance, createHeroCombatState(HERO_MAX_HP))
@@ -322,6 +339,9 @@ export class SceneManager {
       undefined,
       () => {
         const hero = createPlaceholderHero(asset)
+        hero.group.userData.participantId = slot.id
+        hero.group.userData.controller = slot.controller
+        hero.group.userData.team = slot.team
         this.characterGroup.add(hero.group)
         this.heroes[index] = hero
         this.heroCombat.set(hero, createHeroCombatState(HERO_MAX_HP))
@@ -344,7 +364,7 @@ export class SceneManager {
     this.updateMinionWaves()
     this.updateObjectiveAttacks()
     this.updateMinions(delta)
-    this.updateEnemyHeroAi(delta)
+    this.updateAiHeroes(delta)
     this.updateControlledHero(delta)
     this.updateActiveSkills()
     this.heroes.forEach((hero) => {
@@ -486,11 +506,26 @@ export class SceneManager {
     })
   }
 
-  private updateEnemyHeroAi(delta: number) {
-    const hero = this.heroes[1]
-    const combat = hero ? this.heroCombat.get(hero) : null
+  private updateAiHeroes(delta: number) {
+    if (this.matchResult !== 'playing') {
+      return
+    }
 
-    if (!hero || !combat || combat.hp <= 0 || this.matchResult !== 'playing') {
+    this.heroes.forEach((hero, index) => {
+      const slot = this.heroSlots[index]
+
+      if (!hero || slot?.controller !== 'ai') {
+        return
+      }
+
+      this.updateAiHero(hero, index, delta)
+    })
+  }
+
+  private updateAiHero(hero: HeroInstance, index: number, delta: number) {
+    const combat = this.heroCombat.get(hero)
+
+    if (!combat || combat.hp <= 0) {
       return
     }
 
@@ -502,12 +537,17 @@ export class SceneManager {
       return
     }
 
-    const team = this.getHeroTeam(1)
+    const team = this.getHeroTeam(index)
     const kit = HERO_KITS[hero.name]
     const target = this.getHeroAiTarget(hero, team)
 
     if (!target) {
-      this.playHeroState(hero, 'idle')
+      this.moveHero(
+        hero,
+        this.steerAroundObjectives(hero.anchor, this.getLaneDirectionVector(team), team),
+        delta,
+        combat.slowUntil > now ? 0.45 : 0.62,
+      )
       return
     }
 
@@ -517,8 +557,10 @@ export class SceneManager {
 
     if (distance <= kit.attack.range + targetRadius) {
       hero.moveTarget = null
-      this.castBasicAttack(hero)
-      return
+
+      if (this.castBasicAttack(hero)) {
+        return
+      }
     }
 
     const direction = targetPosition.clone().sub(hero.anchor)
@@ -581,8 +623,10 @@ export class SceneManager {
 
     if (this.inputManager?.getAttackCommand()) {
       hero.moveTarget = null
-      this.castBasicAttack(hero)
-      return
+
+      if (this.castBasicAttack(hero)) {
+        return
+      }
     }
 
     this.updatePointerTarget(hero)
@@ -683,38 +727,41 @@ export class SceneManager {
 
   private castBasicAttack(hero: HeroInstance) {
     if (!ATTACK_RETURN_STATES.has(hero.currentState) || this.matchResult !== 'playing') {
-      return
+      return false
     }
 
     const kit = HERO_KITS[hero.name]
     const heroTeam = this.getHeroTeamForHero(hero)
     const enemyHero = this.getEnemyHero(hero)
     const heroTarget =
-      enemyHero && isInRadius(hero, enemyHero, kit.attack.range) ? enemyHero : null
+      enemyHero && hero.anchor.distanceTo(enemyHero.anchor) <= kit.attack.range + this.getCombatTargetRadius({ kind: 'hero', hero: enemyHero })
+        ? enemyHero
+        : null
     const minionTarget = heroTarget
       ? null
-      : this.getClosestEnemyMinion(hero.anchor, heroTeam, kit.attack.range + 0.35)
+      : this.getClosestEnemyMinion(hero.anchor, heroTeam, kit.attack.range + 0.2)
     const objectiveTarget = heroTarget || minionTarget
       ? null
       : this.getAttackableEnemyObjective(hero, kit.attack.range)
     const targetPosition = heroTarget?.anchor ?? minionTarget?.anchor ?? objectiveTarget?.position
 
-    if (targetPosition) {
-      this.faceTarget(hero, targetPosition)
+    if (!targetPosition) {
+      return false
     }
 
+    this.faceTarget(hero, targetPosition)
     this.playHeroState(hero, 'attack')
 
     if (heroTarget) {
       this.createHeroBasicAttackEffect(hero, heroTarget.anchor)
       this.damageHero(heroTarget, kit.attack.damage, heroTeam)
-      return
+      return true
     }
 
     if (minionTarget) {
       this.createHeroBasicAttackEffect(hero, minionTarget.anchor)
       this.damageMinion(minionTarget, kit.attack.damage, heroTeam)
-      return
+      return true
     }
 
     if (objectiveTarget) {
@@ -723,7 +770,10 @@ export class SceneManager {
       this.createHeroBasicAttackEffect(hero, targetPoint)
 
       this.damageObjective(objectiveTarget, kit.attack.damage, heroTeam)
+      return true
     }
+
+    return false
   }
 
   private castMinionAttack(minion: MinionInstance, target: CombatTarget, now: number) {
@@ -1151,7 +1201,7 @@ export class SceneManager {
     }
 
     combat.hp = 0
-    combat.respawnAt = performance.now() / 1000 + RESPAWN_DELAY
+    combat.respawnAt = performance.now() / 1000 + this.getCurrentRespawnDelay()
     combat.skillWindow = null
     hero.moveTarget = null
     this.playHeroState(hero, 'death')
@@ -1202,10 +1252,7 @@ export class SceneManager {
   private getEnemyHero(hero: HeroInstance) {
     const heroTeam = this.getHeroTeamForHero(hero)
 
-    return this.heroes.find((candidate) => {
-      const combat = this.heroCombat.get(candidate)
-      return candidate !== hero && combat && combat.hp > 0 && this.getHeroTeamForHero(candidate) !== heroTeam
-    })
+    return this.getClosestEnemyHero(hero.anchor, heroTeam, Number.POSITIVE_INFINITY)
   }
 
   private getClosestEnemyHero(
@@ -1378,7 +1425,7 @@ export class SceneManager {
   }
 
   private getHeroTeam(index: number): TeamSide {
-    return index === 0 ? 'blue' : 'red'
+    return this.heroSlots[index]?.team ?? 'red'
   }
 
   private getHeroTeamForHero(hero: HeroInstance): TeamSide {
@@ -1483,11 +1530,12 @@ export class SceneManager {
   private getHeroSpawnPosition(index: number) {
     const team = this.getHeroTeam(index)
     const base = this.getTeamBase(team)
-    const spawn = (base?.position ?? this.heroAssets[index]?.position ?? HERO_ASSETS[index].position).clone()
+    const slot = this.heroSlots[index]
+    const spawn = (base?.position ?? slot?.asset.position ?? HERO_ASSETS[0].position).clone()
     const laneDirection = this.getLaneDirection(team)
 
-    spawn.x += team === this.getPlayerTeam() ? -1.35 : 1.35
-    spawn.z += laneDirection * 3.2
+    spawn.x += slot?.spawnOffset.x ?? 0
+    spawn.z += laneDirection * (3.2 + (slot?.spawnOffset.y ?? 0))
     spawn.y = 0
 
     return spawn
@@ -1622,11 +1670,12 @@ export class SceneManager {
     const now = performance.now()
     const selectedHero = this.heroes[this.playerHeroIndex]
     const enemyHero = selectedHero
-      ? this.heroes.find((candidate) => candidate && candidate !== selectedHero)
+      ? this.getClosestEnemyHero(selectedHero.anchor, this.getPlayerTeam(), Number.POSITIVE_INFINITY)
       : undefined
     const selectedCombat = selectedHero ? this.heroCombat.get(selectedHero) : undefined
     const enemyCombat = enemyHero ? this.heroCombat.get(enemyHero) : undefined
     const nowSeconds = now / 1000
+    const matchSeconds = this.getMatchSeconds(nowSeconds)
     const respawnSeconds = Math.max(0, (selectedCombat?.respawnAt ?? 0) - nowSeconds)
 
     this.onStatusChange({
@@ -1640,6 +1689,8 @@ export class SceneManager {
         this.camera,
         this.rendererWidth,
         this.rendererHeight,
+        this.heroSlots.map((slot) => slot.id),
+        this.getAlliedHeroIndexes(),
       ).concat(
         projectMinionHealthBars(
           this.minions,
@@ -1659,6 +1710,7 @@ export class SceneManager {
         ),
       ),
       loaded: this.loadedHeroes,
+      matchSeconds,
       matchResult: this.matchResult,
       minimap: {
         markers: this.createMinimapMarkers(),
@@ -1667,7 +1719,7 @@ export class SceneManager {
       playerKills: this.kills.blue,
       respawnSeconds,
       selectedHp: Math.round(selectedCombat?.hp ?? HERO_MAX_HP),
-      selectedHero: selectedHero?.name ?? this.heroAssets[this.playerHeroIndex]?.name ?? 'Alice',
+      selectedHero: selectedHero?.name ?? this.heroSlots[this.playerHeroIndex]?.asset.name ?? 'Alice',
       selectedMaxHp: selectedCombat?.maxHp ?? HERO_MAX_HP,
       selectedState: selectedHero?.currentState ?? 'idle',
       skillCooldowns: {
@@ -1675,7 +1727,7 @@ export class SceneManager {
         skill2: Math.max(0, (selectedCombat?.cooldowns.skill2 ?? 0) - nowSeconds),
         skill3: Math.max(0, (selectedCombat?.cooldowns.skill3 ?? 0) - nowSeconds),
       },
-      total: this.heroAssets.length,
+      total: this.heroSlots.length,
     })
   }
 
@@ -1687,7 +1739,7 @@ export class SceneManager {
 
       return {
         alive: (combat?.hp ?? 0) > 0,
-        id: `hero-${hero.name}-${index}`,
+        id: this.heroSlots[index]?.id ?? `hero-${hero.name}-${index}`,
         isPlayer: index === this.playerHeroIndex,
         kind: 'hero' as const,
         team,
@@ -1727,6 +1779,15 @@ export class SceneManager {
     return [...objectiveMarkers, ...minionMarkers, ...heroMarkers]
   }
 
+  private getAlliedHeroIndexes() {
+    const playerTeam = this.getPlayerTeam()
+    return new Set(
+      this.heroSlots.flatMap((slot, index) => (
+        slot.team === playerTeam ? [index] : []
+      )),
+    )
+  }
+
   private projectMinimapPosition(position: THREE.Vector3) {
     const width = this.mapBounds.maxX - this.mapBounds.minX
     const depth = this.mapBounds.maxZ - this.mapBounds.minZ
@@ -1747,11 +1808,73 @@ export class SceneManager {
       this.castSkill(selectedHero, slot)
     }
   }
+
+  private getMatchSeconds(nowSeconds = performance.now() / 1000) {
+    return Math.max(0, nowSeconds - this.matchStartedAt)
+  }
+
+  private getCurrentRespawnDelay() {
+    const scaledDelay = RESPAWN_DELAY + Math.floor(this.getMatchSeconds() / 60) * RESPAWN_DELAY_PER_MINUTE
+    return Math.min(RESPAWN_MAX_DELAY, scaledDelay)
+  }
 }
 
-function createMatchHeroAssets(playerHeroName: string): HeroAsset[] {
+function createMatchHeroSlots(playerHeroName: string): MatchHeroSlot[] {
   const playerAsset = HERO_ASSETS.find((asset) => asset.name === playerHeroName) ?? HERO_ASSETS[0]
-  const enemyAsset = HERO_ASSETS.find((asset) => asset.name !== playerAsset.name) ?? HERO_ASSETS[1]
+  const supportAssets = HERO_ASSETS.filter((asset) => asset.name !== playerAsset.name)
+  const blueAssets = [
+    playerAsset,
+    supportAssets[0] ?? HERO_ASSETS[1],
+    supportAssets[1] ?? HERO_ASSETS[2],
+  ]
+  const redAssets = [
+    HERO_ASSETS[0],
+    HERO_ASSETS[1],
+    HERO_ASSETS[2],
+  ]
 
-  return [playerAsset, enemyAsset]
+  return [
+    {
+      asset: blueAssets[0],
+      controller: 'player',
+      id: 'blue-player',
+      spawnOffset: new THREE.Vector2(0, 0),
+      team: 'blue',
+    },
+    {
+      asset: blueAssets[1],
+      controller: 'ai',
+      id: 'blue-ai-1',
+      spawnOffset: new THREE.Vector2(-1.9, 0.9),
+      team: 'blue',
+    },
+    {
+      asset: blueAssets[2],
+      controller: 'ai',
+      id: 'blue-ai-2',
+      spawnOffset: new THREE.Vector2(1.9, 0.9),
+      team: 'blue',
+    },
+    {
+      asset: redAssets[0],
+      controller: 'ai',
+      id: 'red-ai-1',
+      spawnOffset: new THREE.Vector2(0, 0),
+      team: 'red',
+    },
+    {
+      asset: redAssets[1],
+      controller: 'ai',
+      id: 'red-ai-2',
+      spawnOffset: new THREE.Vector2(-1.9, 0.9),
+      team: 'red',
+    },
+    {
+      asset: redAssets[2],
+      controller: 'ai',
+      id: 'red-ai-3',
+      spawnOffset: new THREE.Vector2(1.9, 0.9),
+      team: 'red',
+    },
+  ]
 }

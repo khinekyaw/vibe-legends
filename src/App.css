@@ -26,6 +26,7 @@
 .hero-select-overlay {
   position: absolute;
   inset: 0;
+  z-index: 20;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -36,21 +37,65 @@
 
 .hero-select-panel {
   display: grid;
-  gap: 32px;
-  width: min(300px, 100%);
-  padding: 40px;
+  gap: 18px;
+  width: min(720px, 100%);
+  padding: 20px;
   border: 1px solid rgba(222, 235, 249, 0.28);
   border-radius: 8px;
   background: rgba(10, 16, 26, 0.82);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
 }
 
+.hero-select-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.hero-preview-frame {
+  min-height: 310px;
+  overflow: hidden;
+  border: 1px solid rgba(230, 238, 248, 0.2);
+  border-radius: 8px;
+  background: #111923;
+}
+
+.hero-preview-frame canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hero-select-actions {
+  display: grid;
+  gap: 16px;
+  align-content: center;
+}
+
 .hero-select-panel h1 {
   margin: 0;
   color: #f7fbff;
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
-  text-align: center;
+}
+
+.start-match-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(112, 240, 186, 0.62);
+  border-radius: 6px;
+  background: #4bd697;
+  color: #06120d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.start-match-button:hover,
+.start-match-button:focus-visible {
+  background: #70f0ba;
 }
 
 .hero-select-grid {
@@ -79,7 +124,8 @@
 }
 
 .hero-select-card:hover,
-.hero-select-card:focus-visible {
+.hero-select-card:focus-visible,
+.hero-select-card[aria-pressed='true'] {
   border-color: #70f0ba;
   background: rgba(112, 240, 186, 0.13);
   transform: translateY(-2px);
@@ -103,6 +149,7 @@
 .world-health-layer {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -145,6 +192,7 @@
 
 .minimap {
   position: absolute;
+  z-index: 5;
   top: 16px;
   left: 16px;
   width: 112px;
@@ -234,6 +282,7 @@
 
 .skill-dock {
   position: absolute;
+  z-index: 5;
   right: 24px;
   bottom: 24px;
   display: grid;
@@ -306,10 +355,11 @@
 
 .match-scoreboard {
   position: absolute;
+  z-index: 5;
   top: 18px;
   left: 50%;
   display: grid;
-  grid-template-columns: auto 34px auto 34px auto;
+  grid-template-columns: auto 34px minmax(54px, auto) 34px auto;
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
@@ -336,8 +386,21 @@
   font-size: 18px;
 }
 
+.match-clock {
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  background: rgba(4, 8, 14, 0.38);
+  color: #f7fbff;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 .hero-hud {
   position: absolute;
+  z-index: 5;
   left: 16px;
   bottom: 16px;
   display: flex;
@@ -402,6 +465,7 @@
 .match-result {
   position: absolute;
   inset: 0;
+  z-index: 10;
   display: grid;
   place-items: center;
   pointer-events: none;
@@ -472,6 +536,19 @@
   .hero-select-panel {
     gap: 14px;
     padding: 14px;
+  }
+
+  .hero-select-main {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-preview-frame {
+    min-height: 260px;
+  }
+
+  .hero-select-actions {
+    grid-template-columns: 1fr auto;
+    align-items: center;
   }
 
   .hero-select-grid {

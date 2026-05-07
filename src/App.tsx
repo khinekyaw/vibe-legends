@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { SceneManager } from './core/SceneManager'
 import type { SceneStatus } from './core/sceneConfig'
+import { HeroPreview } from './ui/HeroPreview'
 
 type SkillSlot = 'skill1' | 'skill2' | 'skill3'
 
@@ -76,41 +77,19 @@ const skillIcons: Record<string, Record<SkillSlot, { alt: string; src: string }>
 function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const frameRef = useRef<HTMLDivElement | null>(null)
-  const [selectedHeroName, setSelectedHeroName] = useState<HeroChoiceName | null>(null)
-  const [status, setStatus] = useState<SceneStatus>({
-    enemyHp: 1200,
-    enemyKills: 0,
-    enemyMaxHp: 1200,
-    healthBars: [],
-    loaded: 0,
-    matchResult: 'playing',
-    minimap: {
-      markers: [],
-    },
-    mode: 'loading',
-    playerKills: 0,
-    respawnSeconds: 0,
-    selectedHp: 1200,
-    selectedHero: 'Alice',
-    selectedMaxHp: 1200,
-    selectedState: 'idle',
-    skillCooldowns: {
-      skill1: 0,
-      skill2: 0,
-      skill3: 0,
-    },
-    total: heroChoices.length,
-  })
+  const [selectedHeroName, setSelectedHeroName] = useState<HeroChoiceName>('Alice')
+  const [matchHeroName, setMatchHeroName] = useState<HeroChoiceName | null>(null)
+  const [status, setStatus] = useState<SceneStatus>(() => createInitialStatus('Alice', 6))
 
   useEffect(() => {
     const canvas = canvasRef.current
     const frame = frameRef.current
 
-    if (!canvas || !frame || !selectedHeroName) {
+    if (!canvas || !frame || !matchHeroName) {
       return
     }
 
-    const sceneManager = new SceneManager(canvas, setStatus, selectedHeroName)
+    const sceneManager = new SceneManager(canvas, setStatus, matchHeroName)
     const resizeObserver = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       sceneManager.resize(width, height)
@@ -123,35 +102,11 @@ function App() {
       resizeObserver.disconnect()
       sceneManager.dispose()
     }
-  }, [selectedHeroName])
+  }, [matchHeroName])
 
-  const chooseHero = (heroName: HeroChoiceName) => {
-    setStatus((currentStatus) => ({
-      ...currentStatus,
-      enemyKills: 0,
-      enemyHp: 1200,
-      enemyMaxHp: 1200,
-      healthBars: [],
-      loaded: 0,
-      matchResult: 'playing',
-      minimap: {
-        markers: [],
-      },
-      mode: 'loading',
-      playerKills: 0,
-      respawnSeconds: 0,
-      selectedHero: heroName,
-      selectedHp: 1200,
-      selectedMaxHp: 1200,
-      selectedState: 'idle',
-      skillCooldowns: {
-        skill1: 0,
-        skill2: 0,
-        skill3: 0,
-      },
-      total: heroChoices.length,
-    }))
-    setSelectedHeroName(heroName)
+  const startMatch = () => {
+    setStatus(createInitialStatus(selectedHeroName, 6))
+    setMatchHeroName(selectedHeroName)
   }
 
   return (
@@ -159,7 +114,7 @@ function App() {
       <section className="game-stage" aria-label="Phase 7 objectives and HUD">
         <div className="viewport" ref={frameRef}>
           <canvas ref={canvasRef} />
-          {selectedHeroName ? (
+          {matchHeroName ? (
             <>
               <div className="minimap" aria-label="Minimap">
                 <div className="minimap-lane" aria-hidden="true">
@@ -183,11 +138,13 @@ function App() {
                 </div>
               </div>
               <div className="match-scoreboard" aria-label="Kill count">
-                <span>{status.selectedHero}</span>
+                <span>Blue</span>
                 <strong>{status.playerKills}</strong>
-                <span>Kills</span>
+                <time className="match-clock" dateTime={`PT${Math.floor(status.matchSeconds)}S`}>
+                  {formatMatchTime(status.matchSeconds)}
+                </time>
                 <strong>{status.enemyKills}</strong>
-                <span>Enemy</span>
+                <span>Red</span>
               </div>
               <div className="world-health-layer" aria-hidden="true">
                 {status.healthBars.map((bar) => (
@@ -247,7 +204,7 @@ function App() {
                   <span style={{ width: `${getHpPercent(status.selectedHp, status.selectedMaxHp)}%` }} />
                 </div>
                 <div className="enemy-health">
-                  <span>Enemy</span>
+                  <span>Nearest Red</span>
                   <strong>
                     {Math.max(0, status.enemyHp)} / {status.enemyMaxHp}
                   </strong>
@@ -268,13 +225,22 @@ function App() {
           ) : (
             <div className="hero-select-overlay" role="dialog" aria-label="Choose hero">
               <div className="hero-select-panel">
-                <h1>Choose Hero</h1>
-                <div className="hero-select-grid">
+                <div className="hero-select-main">
+                  <HeroPreview heroName={selectedHeroName} />
+                  <div className="hero-select-actions">
+                    <h1>{selectedHeroName}</h1>
+                    <button className="start-match-button" onClick={startMatch} type="button">
+                      Start Match
+                    </button>
+                  </div>
+                </div>
+                <div className="hero-select-grid" aria-label="Hero roster">
                   {heroChoices.map((hero) => (
                     <button
+                      aria-pressed={selectedHeroName === hero.name}
                       className="hero-select-card"
                       key={hero.name}
-                      onClick={() => chooseHero(hero.name)}
+                      onClick={() => setSelectedHeroName(hero.name)}
                       type="button"
                     >
                       <img alt="" src={hero.portrait} />
@@ -291,12 +257,48 @@ function App() {
   )
 }
 
+function createInitialStatus(heroName: HeroChoiceName, total: number): SceneStatus {
+  return {
+    enemyHp: 1200,
+    enemyKills: 0,
+    enemyMaxHp: 1200,
+    healthBars: [],
+    loaded: 0,
+    matchSeconds: 0,
+    matchResult: 'playing',
+    minimap: {
+      markers: [],
+    },
+    mode: 'loading',
+    playerKills: 0,
+    respawnSeconds: 0,
+    selectedHp: 1200,
+    selectedHero: heroName,
+    selectedMaxHp: 1200,
+    selectedState: 'idle',
+    skillCooldowns: {
+      skill1: 0,
+      skill2: 0,
+      skill3: 0,
+    },
+    total,
+  }
+}
+
 function getHpPercent(hp: number, maxHp: number) {
   if (maxHp <= 0) {
     return 0
   }
 
   return Math.max(0, Math.min(100, (hp / maxHp) * 100))
+}
+
+function formatMatchTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds))
+  const minutes = Math.floor(safeSeconds / 60)
+  const remainingSeconds = safeSeconds % 60
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
 }
 
 function dispatchSkillCommand(slot: SkillSlot) {

@@ -26,6 +26,8 @@ export function projectWorldHealthBars(
   camera: THREE.Camera,
   rendererWidth: number,
   rendererHeight: number,
+  participantIds: string[] = [],
+  alliedHeroIndexes = new Set<number>([selectedHeroIndex]),
 ): SceneStatus['healthBars'] {
   return heroes.filter(Boolean).map((hero, index) => {
     const combat = heroCombat.get(hero)
@@ -35,8 +37,8 @@ export function projectWorldHealthBars(
 
     return {
       hp: Math.round(combat?.hp ?? HERO_MAX_HP),
-      id: `hero-${hero.name}-${index}`,
-      isSelected: index === selectedHeroIndex,
+      id: participantIds[index] ?? `hero-${hero.name}-${index}`,
+      isSelected: alliedHeroIndexes.has(index),
       maxHp: combat?.maxHp ?? HERO_MAX_HP,
       name: hero.name,
       showName: true,
