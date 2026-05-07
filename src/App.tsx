@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { SceneManager } from './core/SceneManager'
 import type { SceneStatus } from './core/sceneConfig'
+import { getHeroXpToNextLevel } from './systems/CombatSystem'
 import { HeroPreview } from './ui/HeroPreview'
 
 type SkillSlot = 'skill1' | 'skill2' | 'skill3'
@@ -195,7 +196,7 @@ function App() {
               </div>
               <div className="hero-hud" aria-label="Player HUD">
                 <div className="hero-hud-top">
-                  <strong>{status.selectedHero}</strong>
+                  <strong>{status.selectedHero} Lv {status.selectedLevel}</strong>
                   <span>
                     {Math.max(0, status.selectedHp)} / {status.selectedMaxHp}
                   </span>
@@ -203,8 +204,11 @@ function App() {
                 <div className="hud-health-track" aria-hidden="true">
                   <span style={{ width: `${getHpPercent(status.selectedHp, status.selectedMaxHp)}%` }} />
                 </div>
+                <div className="hud-xp-track" aria-label="Level progress">
+                  <span style={{ width: `${getXpPercent(status.selectedXp, status.selectedXpToNext)}%` }} />
+                </div>
                 <div className="enemy-health">
-                  <span>Nearest Red</span>
+                  <span>Nearest Red Lv {status.enemyLevel}</span>
                   <strong>
                     {Math.max(0, status.enemyHp)} / {status.enemyMaxHp}
                   </strong>
@@ -260,6 +264,7 @@ function App() {
 function createInitialStatus(heroName: HeroChoiceName, total: number): SceneStatus {
   return {
     enemyHp: 1200,
+    enemyLevel: 1,
     enemyKills: 0,
     enemyMaxHp: 1200,
     healthBars: [],
@@ -274,8 +279,11 @@ function createInitialStatus(heroName: HeroChoiceName, total: number): SceneStat
     respawnSeconds: 0,
     selectedHp: 1200,
     selectedHero: heroName,
+    selectedLevel: 1,
     selectedMaxHp: 1200,
     selectedState: 'idle',
+    selectedXp: 0,
+    selectedXpToNext: getHeroXpToNextLevel(1),
     skillCooldowns: {
       skill1: 0,
       skill2: 0,
@@ -291,6 +299,14 @@ function getHpPercent(hp: number, maxHp: number) {
   }
 
   return Math.max(0, Math.min(100, (hp / maxHp) * 100))
+}
+
+function getXpPercent(xp: number, xpToNext: number) {
+  if (xpToNext <= 0) {
+    return 100
+  }
+
+  return Math.max(0, Math.min(100, (xp / xpToNext) * 100))
 }
 
 function formatMatchTime(seconds: number) {

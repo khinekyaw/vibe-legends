@@ -69,6 +69,7 @@ export function createSceneStatus({
 
   return {
     enemyHp: Math.round(enemyCombat?.hp ?? HERO_MAX_HP),
+    enemyLevel: enemyCombat?.level ?? 1,
     enemyKills: kills.red,
     enemyMaxHp: enemyCombat?.maxHp ?? HERO_MAX_HP,
     healthBars: projectWorldHealthBars(
@@ -118,8 +119,11 @@ export function createSceneStatus({
     respawnSeconds,
     selectedHp: Math.round(selectedCombat?.hp ?? HERO_MAX_HP),
     selectedHero: selectedHero?.name ?? heroSlots[playerHeroIndex]?.asset.name ?? 'Alice',
+    selectedLevel: selectedCombat?.level ?? 1,
     selectedMaxHp: selectedCombat?.maxHp ?? HERO_MAX_HP,
     selectedState: selectedHero?.currentState ?? 'idle',
+    selectedXp: selectedCombat?.xp ?? 0,
+    selectedXpToNext: selectedCombat?.xpToNext ?? 0,
     skillCooldowns: {
       skill1: Math.max(0, (selectedCombat?.cooldowns.skill1 ?? 0) - nowSeconds),
       skill2: Math.max(0, (selectedCombat?.cooldowns.skill2 ?? 0) - nowSeconds),

@@ -5,15 +5,19 @@ import type { HeroInstance } from '../entities/HeroModel'
 export type SkillSlot = 'skill1' | 'skill2' | 'skill3'
 
 export type HeroCombatState = {
+  baseMaxHp: number
   cooldowns: Record<SkillSlot, number>
   hp: number
   immobilizedUntil: number
   lastPulseAt: number
+  level: number
   maxHp: number
   respawnAt: number
   skillWindow: ActiveSkillWindow | null
   slowUntil: number
   stunnedUntil: number
+  xp: number
+  xpToNext: number
 }
 
 export type ActiveSkillWindow = {
@@ -118,8 +122,13 @@ export const HERO_KITS: Record<string, HeroKit> = {
   },
 }
 
+export const HERO_MAX_LEVEL = 15
+export const HERO_DAMAGE_GROWTH_PER_LEVEL = 0.065
+export const HERO_HP_GROWTH_PER_LEVEL = 0.075
+
 export function createHeroCombatState(maxHp: number): HeroCombatState {
   return {
+    baseMaxHp: maxHp,
     cooldowns: {
       skill1: 0,
       skill2: 0,
@@ -128,12 +137,54 @@ export function createHeroCombatState(maxHp: number): HeroCombatState {
     hp: maxHp,
     immobilizedUntil: 0,
     lastPulseAt: 0,
+    level: 1,
     maxHp,
     respawnAt: 0,
     skillWindow: null,
     slowUntil: 0,
     stunnedUntil: 0,
+    xp: 0,
+    xpToNext: getHeroXpToNextLevel(1),
   }
+}
+
+export function grantHeroXp(state: HeroCombatState, amount: number) {
+  if (state.level >= HERO_MAX_LEVEL || amount <= 0) {
+    return 0
+  }
+
+  let levelsGained = 0
+  state.xp += amount
+
+  while (state.level < HERO_MAX_LEVEL && state.xp >= state.xpToNext) {
+    state.xp -= state.xpToNext
+    state.level += 1
+    levelsGained += 1
+
+    const previousMaxHp = state.maxHp
+    state.maxHp = getHeroMaxHpForLevel(state.baseMaxHp, state.level)
+    state.hp += state.maxHp - previousMaxHp
+    state.xpToNext = getHeroXpToNextLevel(state.level)
+  }
+
+  if (state.level >= HERO_MAX_LEVEL) {
+    state.xp = 0
+    state.xpToNext = 0
+  }
+
+  return levelsGained
+}
+
+export function getHeroDamageForLevel(baseDamage: number, level: number) {
+  return Math.round(baseDamage * (1 + (level - 1) * HERO_DAMAGE_GROWTH_PER_LEVEL))
+}
+
+export function getHeroMaxHpForLevel(baseMaxHp: number, level: number) {
+  return Math.round(baseMaxHp * (1 + (level - 1) * HERO_HP_GROWTH_PER_LEVEL))
+}
+
+export function getHeroXpToNextLevel(level: number) {
+  return level >= HERO_MAX_LEVEL ? 0 : 100 + level * 45
 }
 
 export function getHeroForward(hero: HeroInstance) {

@@ -92,6 +92,7 @@ export type MinimapMarker = {
 
 export type SceneStatus = {
   enemyHp: number
+  enemyLevel: number
   enemyKills: number
   enemyMaxHp: number
   healthBars: Array<{
@@ -116,8 +117,11 @@ export type SceneStatus = {
   respawnSeconds: number
   selectedHp: number
   selectedHero: string
+  selectedLevel: number
   selectedMaxHp: number
   selectedState: HeroState
+  selectedXp: number
+  selectedXpToNext: number
   skillCooldowns: Record<'skill1' | 'skill2' | 'skill3', number>
   total: number
 }

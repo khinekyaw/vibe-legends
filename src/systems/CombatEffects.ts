@@ -9,7 +9,7 @@ type AnimatedEffect = THREE.Object3D & {
     createdAt: number
     duration: number
     end?: THREE.Vector3
-    kind: 'beam' | 'burst' | 'projectile' | 'pulse' | 'slash' | 'vortex'
+    kind: 'beam' | 'burst' | 'projectile' | 'pulse' | 'slash' | 'static-circle' | 'vortex'
     start?: THREE.Vector3
   }
 }
@@ -61,6 +61,22 @@ export class CombatEffects {
 
   createCircle(center: THREE.Vector3, radius: number, color: number, duration: number) {
     this.createGroundPulse(center, radius, color, duration)
+  }
+
+  createStaticCircle(center: THREE.Vector3, radius: number, color: number, duration: number) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius, 0.035, 10, 96),
+      this.createMaterial(color, 0.72),
+    ) as unknown as AnimatedEffect
+
+    ring.position.set(center.x, 0.11, center.z)
+    ring.rotation.x = Math.PI / 2
+    ring.userData = {
+      createdAt: performance.now() / 1000,
+      duration,
+      kind: 'static-circle',
+    }
+    this.group.add(ring)
   }
 
   createForward(

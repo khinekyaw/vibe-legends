@@ -40,7 +40,7 @@ export function projectWorldHealthBars(
       id: participantIds[index] ?? `hero-${hero.name}-${index}`,
       isSelected: alliedHeroIndexes.has(index),
       maxHp: combat?.maxHp ?? HERO_MAX_HP,
-      name: hero.name,
+      name: combat ? `${hero.name} Lv ${combat.level}` : hero.name,
       showName: true,
       visible: screenPosition.z >= -1 && screenPosition.z <= 1 && combat !== undefined,
       x: ((screenPosition.x + 1) / 2) * rendererWidth,

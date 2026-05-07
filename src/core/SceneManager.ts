@@ -55,6 +55,8 @@ import {
   applyDamage,
   createHeroCombatState,
   getHeroForward,
+  getHeroDamageForLevel,
+  grantHeroXp,
   HERO_KITS,
   isInForwardBox,
   isInRadius,
@@ -65,6 +67,7 @@ import { CombatEffects } from '../systems/CombatEffects'
 import type { MinionCombatState, ObjectiveCombatState } from '../ui/WorldHealthBars'
 
 const HERO_AI_AGGRO_RANGE = 8.5
+const HERO_KILL_XP_REWARD = 220
 const MINION_AGGRO_RANGE = 6
 const MINION_ATTACK_DAMAGE = 34
 const MINION_ATTACK_LOCK_SECONDS = 0.52
@@ -75,6 +78,7 @@ const MINION_MAX_HP = 420
 const MINION_MODEL_URL = '/assets/models/minion/model.glb'
 const MINION_REMOVE_DELAY = 2.2
 const MINION_SPEED = MAP_WORLD_SIZE * 0.028
+const MINION_XP_REWARD = 50
 const MINION_WAVE_INTERVAL = 18
 const MINION_WAVE_X_OFFSETS = [-1.15, 0, 1.15]
 const OBJECTIVE_AVOIDANCE_LOOKAHEAD = 3.2
@@ -557,6 +561,10 @@ export class SceneManager {
     if (this.inputManager?.getAttackCommand()) {
       hero.moveTarget = null
 
+      if (!ATTACK_RETURN_STATES.has(hero.currentState)) {
+        return
+      }
+
       if (this.castBasicAttack(hero)) {
         return
       }
@@ -689,13 +697,13 @@ export class SceneManager {
 
     if (heroTarget) {
       this.createHeroBasicAttackEffect(hero, heroTarget.anchor)
-      this.damageHero(heroTarget, kit.attack.damage, heroTeam)
+      this.damageHeroFromHero(hero, heroTarget, kit.attack.damage)
       return true
     }
 
     if (minionTarget) {
       this.createHeroBasicAttackEffect(hero, minionTarget.anchor)
-      this.damageMinion(minionTarget, kit.attack.damage, heroTeam)
+      this.damageMinionFromHero(hero, minionTarget, kit.attack.damage)
       return true
     }
 
@@ -704,7 +712,7 @@ export class SceneManager {
       targetPoint.y = 1.9
       this.createHeroBasicAttackEffect(hero, targetPoint)
 
-      this.damageObjective(objectiveTarget, kit.attack.damage, heroTeam)
+      this.damageObjectiveFromHero(hero, objectiveTarget, kit.attack.damage)
       return true
     }
 
@@ -760,7 +768,7 @@ export class SceneManager {
         ? 0x7ae8ff
         : 0xb64cff
 
-    this.combatEffects.createCircle(hero.anchor, kit.attack.range, color, 0.42)
+    this.combatEffects.createStaticCircle(hero.anchor, kit.attack.range, color, 0.55)
   }
 
   private castSkill(hero: HeroInstance, slot: SkillSlot) {
@@ -799,14 +807,13 @@ export class SceneManager {
 
   private castRubySkill(hero: HeroInstance, slot: SkillSlot, now: number) {
     const target = this.getEnemyHero(hero)
-    const heroTeam = this.getHeroTeamForHero(hero)
 
     if (slot === 'skill1') {
       this.combatEffects.createForward(hero, 4.2, 1.45, 0xff4b65, 0.28)
       this.damageEnemyMinionsInForwardBox(hero, 4.2, 1.45, 150)
 
       if (target && isInForwardBox(hero, target, 4.2, 1.45)) {
-        this.damageHero(target, 150, heroTeam)
+        this.damageHeroFromHero(hero, target, 150)
         this.applySlow(target, now + 1)
       }
 
@@ -818,7 +825,7 @@ export class SceneManager {
       this.damageEnemyMinionsInRadius(hero, 2.05, 130)
 
       if (target && isInRadius(hero, target, 2.05)) {
-        this.damageHero(target, 130, heroTeam)
+        this.damageHeroFromHero(hero, target, 130)
         this.applyStun(target, now + 0.5)
         this.pullTarget(target, hero.anchor, 0.65)
       }
@@ -831,7 +838,7 @@ export class SceneManager {
     this.damageEnemyMinionsInForwardBox(hero, 5.1, 2.35, 260)
 
     if (target && isInForwardBox(hero, target, 5.1, 2.35)) {
-      this.damageHero(target, 260, heroTeam)
+      this.damageHeroFromHero(hero, target, 260)
       this.applyStun(target, now + 0.5)
       this.pullTarget(target, hero.anchor, 1.35)
     }
@@ -839,7 +846,6 @@ export class SceneManager {
 
   private castLaylaSkill(hero: HeroInstance, slot: SkillSlot, now: number) {
     const target = this.getEnemyHero(hero)
-    const heroTeam = this.getHeroTeamForHero(hero)
     const forward = getHeroForward(hero)
 
     if (slot === 'skill1') {
@@ -850,7 +856,7 @@ export class SceneManager {
       this.damageEnemyMinionsInForwardBox(hero, 6.8, 0.82, 180)
 
       if (target && isInForwardBox(hero, target, 6.8, 0.82)) {
-        this.damageHero(target, 180, heroTeam)
+        this.damageHeroFromHero(hero, target, 180)
       }
 
       return
@@ -864,10 +870,10 @@ export class SceneManager {
       this.combatEffects.createProjectile(hero.anchor, impact, 0xf6d65f, 0.34, 0.18)
       this.combatEffects.createCircle(impact, 1.35, 0xf6d65f, 0.5)
       this.combatEffects.createBurst(impact, 1.08, 0xf6d65f, 0.3)
-      this.damageEnemyMinionsNear(impact, heroTeam, 1.35, 165)
+      this.damageEnemyMinionsNear(impact, hero, 1.35, 165)
 
       if (target && target.anchor.distanceTo(impact) <= 1.35) {
-        this.damageHero(target, 165, heroTeam)
+        this.damageHeroFromHero(hero, target, 165)
         this.applySlow(target, now + 1)
       }
 
@@ -884,13 +890,12 @@ export class SceneManager {
     this.damageEnemyMinionsInForwardBox(hero, range, width, 320)
 
     if (target && isInForwardBox(hero, target, range, width)) {
-      this.damageHero(target, 320, heroTeam)
+      this.damageHeroFromHero(hero, target, 320)
     }
   }
 
   private castAliceSkill(hero: HeroInstance, slot: SkillSlot, now: number) {
     const target = this.getEnemyHero(hero)
-    const heroTeam = this.getHeroTeamForHero(hero)
 
     if (slot === 'skill1') {
       const forward = getHeroForward(hero)
@@ -907,7 +912,7 @@ export class SceneManager {
       this.damageEnemyMinionsInForwardBox(hero, 4.8, 0.9, 170)
 
       if (target && isInForwardBox(hero, target, 4.8, 0.9)) {
-        this.damageHero(target, 170, heroTeam)
+        this.damageHeroFromHero(hero, target, 170)
       }
 
       return
@@ -918,7 +923,7 @@ export class SceneManager {
       this.damageEnemyMinionsInRadius(hero, 2.15, 210)
 
       if (target && isInRadius(hero, target, 2.15)) {
-        this.damageHero(target, 210, heroTeam)
+        this.damageHeroFromHero(hero, target, 210)
         this.applySlow(target, now + 1)
       }
 
@@ -988,7 +993,7 @@ export class SceneManager {
         this.damageEnemyMinionsInRadius(hero, 2.7, 330)
 
         if (target && isInRadius(hero, target, 2.7)) {
-          this.damageHero(target, 330, this.getHeroTeamForHero(hero))
+          this.damageHeroFromHero(hero, target, 330)
           this.applyImmobilize(target, now + 1)
         }
 
@@ -1085,6 +1090,14 @@ export class SceneManager {
     this.combatEffects.createCircle(target.anchor, 0.72, 0xff2c4a, 0.18)
   }
 
+  private damageHeroFromHero(source: HeroInstance, target: HeroInstance, baseAmount: number) {
+    this.damageHero(
+      target,
+      this.getHeroScaledDamage(source, baseAmount),
+      this.getHeroTeamForHero(source),
+    )
+  }
+
   private damageMinion(target: MinionInstance, amount: number, sourceTeam?: TeamSide) {
     const combat = this.minionCombat.get(target)
 
@@ -1101,8 +1114,16 @@ export class SceneManager {
     this.combatEffects.createCircle(target.anchor, 0.42, 0xff2c4a, 0.16)
 
     if (combat.hp <= 0) {
-      this.killMinion(target)
+      this.killMinion(target, sourceTeam)
     }
+  }
+
+  private damageMinionFromHero(source: HeroInstance, target: MinionInstance, baseAmount: number) {
+    this.damageMinion(
+      target,
+      this.getHeroScaledDamage(source, baseAmount),
+      this.getHeroTeamForHero(source),
+    )
   }
 
   private damageObjective(target: ObjectiveDefinition, amount: number, sourceTeam?: TeamSide) {
@@ -1126,7 +1147,15 @@ export class SceneManager {
     }
   }
 
-  private killMinion(minion: MinionInstance) {
+  private damageObjectiveFromHero(source: HeroInstance, target: ObjectiveDefinition, baseAmount: number) {
+    this.damageObjective(
+      target,
+      this.getHeroScaledDamage(source, baseAmount),
+      this.getHeroTeamForHero(source),
+    )
+  }
+
+  private killMinion(minion: MinionInstance, sourceTeam?: TeamSide) {
     const combat = this.minionCombat.get(minion)
 
     if (!combat || minion.currentState === 'death') {
@@ -1137,6 +1166,10 @@ export class SceneManager {
     minion.deadAt = performance.now() / 1000
     minion.actionLockedUntil = 0
     playMinionState(minion, 'death')
+
+    if (sourceTeam && sourceTeam !== minion.team) {
+      this.grantTeamXp(sourceTeam, MINION_XP_REWARD)
+    }
   }
 
   private killHero(hero: HeroInstance, sourceTeam?: TeamSide) {
@@ -1154,7 +1187,33 @@ export class SceneManager {
 
     if (sourceTeam && sourceTeam !== this.getHeroTeamForHero(hero)) {
       this.kills[sourceTeam] += 1
+      this.grantTeamXp(sourceTeam, HERO_KILL_XP_REWARD)
     }
+  }
+
+  private getHeroScaledDamage(hero: HeroInstance, baseAmount: number) {
+    const combat = this.heroCombat.get(hero)
+    return getHeroDamageForLevel(baseAmount, combat?.level ?? 1)
+  }
+
+  private grantTeamXp(team: TeamSide, amount: number) {
+    this.heroes.forEach((hero, index) => {
+      if (this.getHeroTeam(index) !== team) {
+        return
+      }
+
+      const combat = this.heroCombat.get(hero)
+
+      if (!combat || combat.hp <= 0) {
+        return
+      }
+
+      const previousLevel = combat.level
+
+      if (grantHeroXp(combat, amount) > 0 && combat.level > previousLevel) {
+        this.combatEffects.createCircle(hero.anchor, 0.95, 0x70b7ff, 0.42)
+      }
+    })
   }
 
   private applySlow(hero: HeroInstance, until: number) {
@@ -1547,16 +1606,18 @@ export class SceneManager {
   }
 
   private damageEnemyMinionsInRadius(hero: HeroInstance, radius: number, amount: number) {
-    const heroTeam = this.getHeroTeamForHero(hero)
-    this.damageEnemyMinionsNear(hero.anchor, heroTeam, radius, amount)
+    this.damageEnemyMinionsNear(hero.anchor, hero, radius, amount)
   }
 
   private damageEnemyMinionsNear(
     position: THREE.Vector3,
-    sourceTeam: TeamSide,
+    sourceHero: HeroInstance,
     radius: number,
     amount: number,
   ) {
+    const sourceTeam = this.getHeroTeamForHero(sourceHero)
+    const scaledAmount = this.getHeroScaledDamage(sourceHero, amount)
+
     this.minions.forEach((minion) => {
       const combat = this.minionCombat.get(minion)
 
@@ -1565,7 +1626,7 @@ export class SceneManager {
       }
 
       if (position.distanceTo(minion.anchor) <= radius) {
-        this.damageMinion(minion, amount, sourceTeam)
+        this.damageMinion(minion, scaledAmount, sourceTeam)
       }
     })
   }
@@ -1578,6 +1639,7 @@ export class SceneManager {
   ) {
     const heroTeam = this.getHeroTeamForHero(hero)
     const forward = getHeroForward(hero)
+    const scaledAmount = this.getHeroScaledDamage(hero, amount)
 
     this.minions.forEach((minion) => {
       const combat = this.minionCombat.get(minion)
@@ -1597,7 +1659,7 @@ export class SceneManager {
       const sideDistance = offset.sub(forward.clone().multiplyScalar(forwardDistance)).length()
 
       if (sideDistance <= width / 2) {
-        this.damageMinion(minion, amount, heroTeam)
+        this.damageMinion(minion, scaledAmount, heroTeam)
       }
     })
   }
