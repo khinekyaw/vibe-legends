@@ -13,7 +13,6 @@ import {
   type MinionInstance,
 } from '../entities/MinionModel'
 import {
-  createMapWallColliders,
   prepareMapModel,
   type MapBounds,
 } from '../map/MapModel'
@@ -25,9 +24,9 @@ import {
   OBJECTIVE_LAYOUT,
 } from '../map/ObjectiveStructures'
 import {
-  BRAWL_MAP_BOUNDS,
+  GLB_BRIDGE_MAP_BOUNDS,
+  createGlbBridgeMapColliders,
   createSimpleBrawlDebugGroup,
-  createSimpleBrawlColliders,
   createSimpleBrawlMap,
 } from '../map/SimpleBrawlMap'
 import {
@@ -171,7 +170,7 @@ export class SceneManager {
   private readonly combatEffects = new CombatEffects()
   private rendererHeight = 1
   private rendererWidth = 1
-  private mapBounds: MapBounds = BRAWL_MAP_BOUNDS
+  private mapBounds: MapBounds = GLB_BRIDGE_MAP_BOUNDS
   private mapModel: THREE.Group | null = null
   private mapTransform: MapTransformControls = { ...DEFAULT_MAP_TRANSFORM }
   private readonly objectiveColliders = createObjectiveColliders()
@@ -218,7 +217,7 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
 
-    this.camera = new THREE.PerspectiveCamera(85, 1, 0.1, MAP_WORLD_SIZE * 4)
+    this.camera = new THREE.PerspectiveCamera(80, 1, 0.1, MAP_WORLD_SIZE * 4)
     // this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
     this.camera.lookAt(this.controlsTarget)
@@ -292,11 +291,11 @@ export class SceneManager {
   }
 
   private loadMapModel() {
-    this.mapBounds = BRAWL_MAP_BOUNDS
+    this.mapBounds = GLB_BRIDGE_MAP_BOUNDS
     this.wallColliders.splice(
       0,
       this.wallColliders.length,
-      ...createSimpleBrawlColliders(),
+      ...createGlbBridgeMapColliders(),
       ...this.objectiveColliders,
     )
     this.applyMapTransform()
@@ -306,13 +305,14 @@ export class SceneManager {
       MAP_MODEL_URL,
       (gltf) => {
         const map = gltf.scene
-        this.mapBounds = prepareMapModel(map)
+        prepareMapModel(map)
+        this.mapBounds = GLB_BRIDGE_MAP_BOUNDS
         hideBakedMapTowers(map)
         this.mapModel = map
         this.mapModelTransformGroup.clear()
         this.mapModelTransformGroup.add(map)
         this.applyMapTransform()
-        this.refreshMapModelColliders()
+        this.refreshMapColliders()
       },
       undefined,
       () => {
@@ -336,27 +336,17 @@ export class SceneManager {
     this.mapModelTransformGroup.updateMatrixWorld(true)
   }
 
-  private refreshMapModelColliders() {
+  private refreshMapColliders() {
     if (!this.mapModel) {
       return
     }
 
-    const mapColliders = createMapWallColliders(this.mapModelTransformGroup)
-    const box = new THREE.Box3().setFromObject(this.mapModelTransformGroup)
-
-    if (!box.isEmpty()) {
-      this.mapBounds = {
-        maxX: box.max.x,
-        maxZ: box.max.z,
-        minX: box.min.x,
-        minZ: box.min.z,
-      }
-    }
+    this.mapBounds = GLB_BRIDGE_MAP_BOUNDS
 
     this.wallColliders.splice(
       0,
       this.wallColliders.length,
-      ...(mapColliders.length > 0 ? mapColliders : createSimpleBrawlColliders()),
+      ...createGlbBridgeMapColliders(),
       ...this.objectiveColliders,
     )
     this.refreshWallColliderDebug()

@@ -17,7 +17,17 @@ export type CircleCollider = {
   z: number
 }
 
-export type WorldCollider = AabbCollider | CircleCollider
+export type SegmentCollider = {
+  ax: number
+  az: number
+  bx: number
+  bz: number
+  id: string
+  radius: number
+  shape: 'segment'
+}
+
+export type WorldCollider = AabbCollider | CircleCollider | SegmentCollider
 
 export type CollisionResult = {
   collided: boolean
@@ -50,6 +60,48 @@ export function resolveAabbCollisions(
           const push = minDistance - distance
           center.x += (offsetX / distance) * push
           center.z += (offsetZ / distance) * push
+        } else {
+          center.z += minDistance
+        }
+
+        collided = true
+        resolvedThisPass = true
+        continue
+      }
+
+      if (collider.shape === 'segment') {
+        const segmentX = collider.bx - collider.ax
+        const segmentZ = collider.bz - collider.az
+        const segmentLengthSq = segmentX * segmentX + segmentZ * segmentZ
+        const closestRatio = segmentLengthSq > 0
+          ? THREE.MathUtils.clamp(
+            ((center.x - collider.ax) * segmentX + (center.z - collider.az) * segmentZ) /
+              segmentLengthSq,
+            0,
+            1,
+          )
+          : 0
+        const closestX = collider.ax + segmentX * closestRatio
+        const closestZ = collider.az + segmentZ * closestRatio
+        const offsetX = center.x - closestX
+        const offsetZ = center.z - closestZ
+        const distanceSq = offsetX * offsetX + offsetZ * offsetZ
+        const minDistance = collider.radius + halfSize
+
+        if (distanceSq >= minDistance * minDistance) {
+          continue
+        }
+
+        const distance = Math.sqrt(distanceSq)
+
+        if (distance > 0) {
+          const push = minDistance - distance
+          center.x += (offsetX / distance) * push
+          center.z += (offsetZ / distance) * push
+        } else if (segmentLengthSq > 0) {
+          const segmentLength = Math.sqrt(segmentLengthSq)
+          center.x += (-segmentZ / segmentLength) * minDistance
+          center.z += (segmentX / segmentLength) * minDistance
         } else {
           center.z += minDistance
         }

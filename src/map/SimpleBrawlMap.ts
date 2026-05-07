@@ -20,6 +20,13 @@ export const BRAWL_MAP_BOUNDS: MapBounds = {
   minZ: -MAP_LENGTH / 2,
 }
 
+export const GLB_BRIDGE_MAP_BOUNDS: MapBounds = {
+  maxX: 5.35,
+  maxZ: 31.5,
+  minX: -5.35,
+  minZ: -31.5,
+}
+
 const brawlMaterials = {
   void: new THREE.MeshBasicMaterial({
     color: 0x102036,
@@ -101,6 +108,42 @@ export function createSimpleBrawlColliders(): AabbCollider[] {
   ]
 }
 
+export function createGlbBridgeMapColliders(): WorldCollider[] {
+  const wallRadius = 0.28
+  const leftPath: Array<[number, number]> = [
+    [-1.45, -34.0],
+    [-6, -29],
+    [-7, -23],
+    [-8, -20],
+    [-4.55, -16],
+    [-4.55, -5],
+    [-8, -4],
+    [-8, 7],
+    [-4.55, 7],
+    [-4.55, 16.8],
+    [-7.55, 24.0],
+    [-6, 28.5],
+    [-1.45, 36.0],
+  ]
+  const rightPath = leftPath.map(([x, z]) => [-x, z] as [number, number])
+  const colliders = [
+    ...createSegmentPathColliders("left-bridge-edge", leftPath, wallRadius),
+    ...createSegmentPathColliders("right-bridge-edge", rightPath, wallRadius),
+  ]
+
+  colliders.push(
+    createSegmentCollider("red-base-end-edge", leftPath[0], rightPath[0], wallRadius),
+    createSegmentCollider(
+      "blue-base-end-edge",
+      leftPath[leftPath.length - 1],
+      rightPath[rightPath.length - 1],
+      wallRadius,
+    ),
+  )
+
+  return colliders
+}
+
 export function createSimpleBrawlDebugGroup(colliders: WorldCollider[]) {
   const debugGroup = new THREE.Group()
   const material = new THREE.MeshBasicMaterial({
@@ -114,6 +157,29 @@ export function createSimpleBrawlDebugGroup(colliders: WorldCollider[]) {
 
   debugGroup.name = "brawl-collider-debug"
   colliders.forEach((collider) => {
+    if (collider.shape === "segment") {
+      const dx = collider.bx - collider.ax
+      const dz = collider.bz - collider.az
+      const length = Math.sqrt(dx * dx + dz * dz)
+
+      if (length <= 0) {
+        return
+      }
+
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(length, WALL_COLLIDER_DEBUG_HEIGHT, collider.radius * 2),
+        material,
+      )
+      mesh.position.set(
+        collider.ax + dx / 2,
+        WALL_COLLIDER_DEBUG_HEIGHT / 2,
+        collider.az + dz / 2,
+      )
+      mesh.rotation.y = Math.atan2(-dz, dx)
+      debugGroup.add(mesh)
+      return
+    }
+
     if (collider.shape === "circle") {
       const mesh = new THREE.Mesh(
         new THREE.CylinderGeometry(
@@ -149,6 +215,42 @@ export function createSimpleBrawlDebugGroup(colliders: WorldCollider[]) {
   })
 
   return debugGroup
+}
+
+function createSegmentPathColliders(
+  idPrefix: string,
+  points: Array<[number, number]>,
+  radius: number,
+) {
+  const colliders: WorldCollider[] = []
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    colliders.push(createSegmentCollider(
+      `${idPrefix}-${index + 1}`,
+      points[index],
+      points[index + 1],
+      radius,
+    ))
+  }
+
+  return colliders
+}
+
+function createSegmentCollider(
+  id: string,
+  [ax, az]: [number, number],
+  [bx, bz]: [number, number],
+  radius: number,
+): WorldCollider {
+  return {
+    ax,
+    az,
+    bx,
+    bz,
+    id,
+    radius,
+    shape: "segment",
+  }
 }
 
 function createFloorMesh() {
