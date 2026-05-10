@@ -48,7 +48,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     position: new THREE.Vector3(0, 0, tower1PosZ),
     team: "blue",
     visualHeight: 3.2,
-    maxHp: 2200,
+    maxHp: 1500,
   },
   {
     attackDamage: 115,
@@ -64,7 +64,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     position: new THREE.Vector3(0, 0, tower2PosZ),
     team: "blue",
     visualHeight: 3.1,
-    maxHp: 2400,
+    maxHp: 1800,
   },
   {
     attackDamage: 150,
@@ -79,7 +79,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     position: new THREE.Vector3(0, 0, nexusPosZ),
     team: "blue",
     visualHeight: 2.65,
-    maxHp: 3600,
+    maxHp: 2800,
   },
   {
     attackDamage: 115,
@@ -95,7 +95,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     position: new THREE.Vector3(0, 0, -1 * tower2PosZ),
     team: "red",
     visualHeight: 3.1,
-    maxHp: 2400,
+    maxHp: 1800,
   },
   {
     attackDamage: 95,
@@ -111,7 +111,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     position: new THREE.Vector3(0, 0, -1 * tower1PosZ),
     team: "red",
     visualHeight: 3.2,
-    maxHp: 2200,
+    maxHp: 1500,
   },
   {
     attackDamage: 150,
@@ -126,7 +126,7 @@ export const OBJECTIVE_LAYOUT: ObjectiveDefinition[] = [
     position: new THREE.Vector3(0, 0, -1 * nexusPosZ),
     team: "red",
     visualHeight: 2.65,
-    maxHp: 3600,
+    maxHp: 2800,
   },
 ]
 

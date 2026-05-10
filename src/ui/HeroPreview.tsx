@@ -22,7 +22,6 @@ export function HeroPreview({ heroName }: HeroPreviewProps) {
     }
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x111923)
 
     const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 30)
     camera.position.set(0, 1.45, 5.2)
@@ -30,10 +29,11 @@ export function HeroPreview({ heroName }: HeroPreviewProps) {
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      alpha: false,
+      alpha: true,
       canvas,
       powerPreference: 'high-performance',
     })
+    renderer.setClearColor(0x000000, 0)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
     const previewRoot = new THREE.Group()

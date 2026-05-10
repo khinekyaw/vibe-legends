@@ -116,16 +116,38 @@ export class CombatEffects {
       return
     }
 
+    const direction = end.clone().sub(start).normalize()
     const projectile = new THREE.Group() as unknown as AnimatedEffect
     const core = new THREE.Mesh(
-      new THREE.SphereGeometry(radius, 20, 12),
-      this.createMaterial(color, 0.95),
+      new THREE.IcosahedronGeometry(radius, 1),
+      this.createMaterial(color, 1),
     )
+    core.userData.isCore = true
     const halo = new THREE.Mesh(
       new THREE.SphereGeometry(radius * 1.9, 20, 12),
-      this.createMaterial(color, 0.24),
+      this.createMaterial(color, 0.28),
     )
-    projectile.add(halo, core)
+    const outerHalo = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 3.2, 16, 10),
+      this.createMaterial(color, 0.1),
+    )
+    const trail = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.15, radius * 1.4, radius * 8, 12, 1, true),
+      this.createMaterial(color, 0.42),
+    )
+    trail.quaternion.setFromUnitVectors(up, direction.clone().negate())
+    trail.position.copy(direction.clone().multiplyScalar(-radius * 4))
+    const flareA = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 6, radius * 0.18, radius * 0.18),
+      this.createMaterial(color, 0.55),
+    )
+    flareA.userData.isCore = true
+    const flareB = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 0.18, radius * 0.18, radius * 6),
+      this.createMaterial(color, 0.55),
+    )
+    flareB.userData.isCore = true
+    projectile.add(outerHalo, halo, trail, core, flareA, flareB)
     projectile.position.copy(start)
     projectile.userData = {
       createdAt: performance.now() / 1000,
@@ -139,20 +161,32 @@ export class CombatEffects {
   }
 
   createGroundPulse(center: THREE.Vector3, radius: number, color: number, duration: number) {
+    const pulse = new THREE.Group() as unknown as AnimatedEffect
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(radius, 0.04, 10, 72),
-      this.createMaterial(color, 0.68),
-    ) as unknown as AnimatedEffect
-
-    ring.position.set(center.x, 0.11, center.z)
+      new THREE.TorusGeometry(radius, 0.05, 12, 80),
+      this.createMaterial(color, 0.78),
+    )
     ring.rotation.x = Math.PI / 2
-    ring.userData = {
-      baseScale: ring.scale.clone(),
+    const innerRing = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * 0.78, 0.025, 10, 72),
+      this.createMaterial(color, 0.44),
+    )
+    innerRing.rotation.x = Math.PI / 2
+    const disk = new THREE.Mesh(
+      new THREE.CircleGeometry(radius, 64),
+      this.createMaterial(color, 0.16),
+    )
+    disk.rotation.x = -Math.PI / 2
+    disk.position.y = 0.005
+    pulse.add(disk, innerRing, ring)
+    pulse.position.set(center.x, 0.11, center.z)
+    pulse.userData = {
+      baseScale: pulse.scale.clone(),
       createdAt: performance.now() / 1000,
       duration,
       kind: 'pulse',
     }
-    this.group.add(ring)
+    this.group.add(pulse)
   }
 
   createForwardSlash(
@@ -164,11 +198,30 @@ export class CombatEffects {
   ) {
     const forward = getHeroForward(hero)
     const center = hero.anchor.clone().addScaledVector(forward, range / 2)
-    const slash = new THREE.Mesh(
-      new THREE.BoxGeometry(width, 0.18, range),
-      this.createMaterial(color, 0.46),
-    ) as unknown as AnimatedEffect
+    const slash = new THREE.Group() as unknown as AnimatedEffect
 
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(width, 0.16, range),
+      this.createMaterial(color, 0.5),
+    )
+    const innerCore = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.55, 0.18, range * 0.96),
+      this.createMaterial(color, 0.78),
+    )
+    const tipFlare = new THREE.Mesh(
+      new THREE.SphereGeometry(width * 0.55, 18, 10),
+      this.createMaterial(color, 0.4),
+    )
+    tipFlare.scale.set(1.4, 0.2, 0.6)
+    tipFlare.position.z = range / 2
+    const trailingFlare = new THREE.Mesh(
+      new THREE.SphereGeometry(width * 0.4, 16, 8),
+      this.createMaterial(color, 0.32),
+    )
+    trailingFlare.scale.set(1.1, 0.18, 0.5)
+    trailingFlare.position.z = -range / 2 + width * 0.2
+
+    slash.add(blade, innerCore, tipFlare, trailingFlare)
     slash.position.set(center.x, 0.24, center.z)
     slash.rotation.y = hero.facingAngle
     slash.userData = {
@@ -183,16 +236,32 @@ export class CombatEffects {
   createVortex(center: THREE.Vector3, radius: number, color: number, duration: number) {
     const vortex = new THREE.Group() as unknown as AnimatedEffect
 
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(radius * (0.54 + index * 0.22), 0.035, 8, 64),
-        this.createMaterial(color, 0.42 - index * 0.08),
+        new THREE.TorusGeometry(radius * (0.5 + index * 0.16), 0.04, 8, 72),
+        this.createMaterial(color, 0.5 - index * 0.07),
       )
       ring.rotation.x = Math.PI / 2
-      ring.position.y = 0.1 + index * 0.2
+      ring.rotation.z = (index / 5) * Math.PI * 0.4
+      ring.position.y = 0.08 + index * 0.18
       ring.userData.spin = index % 2 === 0 ? 1 : -1
       vortex.add(ring)
     }
+
+    const column = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.18, radius * 0.42, radius * 1.6, 16, 1, true),
+      this.createMaterial(color, 0.3),
+    )
+    column.position.y = radius * 0.8
+    column.userData.isColumn = true
+    vortex.add(column)
+
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 0.22, 16, 12),
+      this.createMaterial(color, 0.55),
+    )
+    core.position.y = radius * 0.4
+    vortex.add(core)
 
     vortex.position.set(center.x, 0.08, center.z)
     vortex.userData = {
@@ -207,19 +276,36 @@ export class CombatEffects {
   createBurst(center: THREE.Vector3, radius: number, color: number, duration: number) {
     const burst = new THREE.Group() as unknown as AnimatedEffect
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(radius, 0.05, 10, 72),
-      this.createMaterial(color, 0.72),
+      new THREE.TorusGeometry(radius, 0.06, 12, 80),
+      this.createMaterial(color, 0.85),
+    )
+    const innerRing = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * 0.62, 0.03, 8, 64),
+      this.createMaterial(color, 0.5),
     )
     const flash = new THREE.Mesh(
-      new THREE.SphereGeometry(radius * 0.48, 20, 12),
-      this.createMaterial(color, 0.24),
+      new THREE.SphereGeometry(radius * 0.55, 22, 14),
+      this.createMaterial(color, 0.32),
+    )
+    const flashCore = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 0.28, 16, 10),
+      this.createMaterial(color, 0.7),
+    )
+    const beamUp = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.1, radius * 0.25, radius * 1.6, 12, 1, true),
+      this.createMaterial(color, 0.32),
     )
 
     ring.rotation.x = Math.PI / 2
+    innerRing.rotation.x = Math.PI / 2
     ring.position.y = 0.12
+    innerRing.position.y = 0.16
     flash.position.y = 0.24
+    flashCore.position.y = 0.24
+    beamUp.position.y = radius * 0.8
+
     burst.position.set(center.x, 0.06, center.z)
-    burst.add(ring, flash)
+    burst.add(ring, innerRing, flash, flashCore, beamUp)
     burst.userData = {
       baseScale: burst.scale.clone(),
       createdAt: performance.now() / 1000,
@@ -241,10 +327,20 @@ export class CombatEffects {
       return
     }
 
-    const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.055, length, 16),
-      this.createMaterial(color, 0.68),
-    ) as unknown as AnimatedEffect
+    const beam = new THREE.Group() as unknown as AnimatedEffect
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, length, 12),
+      this.createMaterial(color, 0.95),
+    )
+    const inner = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.09, length, 16),
+      this.createMaterial(color, 0.55),
+    )
+    const halo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.18, length, 18),
+      this.createMaterial(color, 0.22),
+    )
+    beam.add(halo, inner, core)
 
     beam.position.copy(start.clone().add(end).multiplyScalar(0.5))
     beam.quaternion.setFromUnitVectors(up, direction.normalize())
@@ -264,42 +360,55 @@ export class CombatEffects {
 
     effect.position.lerpVectors(effect.userData.start, effect.userData.end, progress)
     effect.position.y += Math.sin(progress * Math.PI) * 0.55
-    effect.rotation.y += 0.26
-    effect.rotation.z += 0.16
-    this.setOpacity(effect, 1 - progress * 0.18)
+    effect.children.forEach((child) => {
+      if (child.userData.isCore) {
+        child.rotation.y += 0.34
+        child.rotation.z += 0.22
+      }
+    })
+    this.setOpacity(effect, 1 - progress * 0.2)
   }
 
   private updatePulse(effect: AnimatedEffect, progress: number) {
-    const scale = 0.72 + progress * 0.55
+    const scale = 0.6 + progress * 0.85
     effect.scale.set(scale, scale, scale)
-    effect.rotation.z += 0.04
-    this.setOpacity(effect, 1 - progress)
+    effect.rotation.y += 0.02
+    this.setOpacity(effect, Math.pow(1 - progress, 1.4))
   }
 
   private updateSlash(effect: AnimatedEffect, progress: number) {
-    effect.scale.x = 0.65 + progress * 0.7
-    effect.scale.z = 0.22 + progress * 0.95
-    this.setOpacity(effect, 1 - progress)
+    effect.scale.x = 0.55 + progress * 0.85
+    effect.scale.z = 0.2 + progress * 1.05
+    effect.scale.y = 1 + Math.sin(progress * Math.PI) * 0.4
+    this.setOpacity(effect, Math.pow(1 - progress, 1.4))
   }
 
   private updateVortex(effect: AnimatedEffect, progress: number) {
-    effect.scale.setScalar(0.74 + progress * 0.42)
+    effect.scale.setScalar(0.7 + progress * 0.5)
     effect.children.forEach((child) => {
-      child.rotation.z += 0.075 * (child.userData.spin ?? 1)
+      if (child.userData.isColumn) {
+        child.rotation.y += 0.08
+        return
+      }
+      child.rotation.z += 0.09 * (child.userData.spin ?? 1)
     })
-    this.setOpacity(effect, 1 - progress * 0.72)
+    this.setOpacity(effect, 1 - progress * 0.78)
   }
 
   private updateBeam(effect: AnimatedEffect, progress: number) {
-    const pulse = 1 + Math.sin(progress * Math.PI * 5) * 0.22
+    const pulse = 1 + Math.sin(progress * Math.PI * 6) * 0.28
     effect.scale.x = pulse
     effect.scale.z = pulse
-    this.setOpacity(effect, 1 - progress)
+    effect.children.forEach((child, index) => {
+      child.rotation.y += 0.06 * (index + 1)
+    })
+    this.setOpacity(effect, Math.pow(1 - progress, 1.5))
   }
 
   private updateBurst(effect: AnimatedEffect, progress: number) {
-    effect.scale.setScalar(0.66 + progress * 0.72)
-    this.setOpacity(effect, 1 - progress)
+    effect.scale.setScalar(0.5 + progress * 1.05)
+    effect.rotation.y += 0.05
+    this.setOpacity(effect, Math.pow(1 - progress, 1.6))
   }
 
   private updateRangeCircle(effect: AnimatedEffect) {

@@ -21,6 +21,7 @@ const MOVEMENT_KEYS = {
 export class InputManager {
   private readonly canvas: HTMLCanvasElement
   private readonly movementVector = new THREE.Vector2()
+  private readonly virtualMovement = new THREE.Vector2()
   private readonly pressedKeys = new Set<string>()
   private attackQueued = false
   private pointerCommand: PointerCommand | null = null
@@ -31,6 +32,8 @@ export class InputManager {
     window.addEventListener('keydown', this.handleKeyDown)
     window.addEventListener('keyup', this.handleKeyUp)
     window.addEventListener('blur', this.handleBlur)
+    window.addEventListener('virtual-movement', this.handleVirtualMovement as EventListener)
+    window.addEventListener('virtual-attack', this.handleVirtualAttack)
     canvas.addEventListener('pointerdown', this.handlePointerDown)
   }
 
@@ -38,6 +41,8 @@ export class InputManager {
     window.removeEventListener('keydown', this.handleKeyDown)
     window.removeEventListener('keyup', this.handleKeyUp)
     window.removeEventListener('blur', this.handleBlur)
+    window.removeEventListener('virtual-movement', this.handleVirtualMovement as EventListener)
+    window.removeEventListener('virtual-attack', this.handleVirtualAttack)
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
   }
 
@@ -49,6 +54,10 @@ export class InputManager {
         this.movementVector.add(direction)
       }
     })
+
+    if (this.movementVector.lengthSq() === 0 && this.virtualMovement.lengthSq() > 0) {
+      this.movementVector.copy(this.virtualMovement)
+    }
 
     if (this.movementVector.lengthSq() > 1) {
       this.movementVector.normalize()
@@ -106,6 +115,15 @@ export class InputManager {
   private readonly handleBlur = () => {
     this.pressedKeys.clear()
     this.pointerCommand = null
+    this.virtualMovement.set(0, 0)
+  }
+
+  private readonly handleVirtualMovement = (event: CustomEvent<{ x: number; y: number }>) => {
+    this.virtualMovement.set(event.detail.x, event.detail.y)
+  }
+
+  private readonly handleVirtualAttack = () => {
+    this.attackQueued = true
   }
 
   private readonly handlePointerDown = (event: PointerEvent) => {
