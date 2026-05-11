@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import './App.css'
-import { SceneManager } from './core/SceneManager'
 import type { SceneStatus } from './core/sceneConfig'
 import {
   DEFAULT_MATCH_PACE,
@@ -9,8 +8,11 @@ import {
 } from './core/matchPace'
 import { audioManager } from './systems/AudioManager'
 import { getHeroXpToNextLevel } from './systems/CombatSystem'
-import { HeroPreview } from './ui/HeroPreview'
 import { VirtualJoystick } from './ui/VirtualJoystick'
+
+const HeroPreview = lazy(() =>
+  import('./ui/HeroPreview').then((mod) => ({ default: mod.HeroPreview })),
+)
 
 type SkillSlot = 'skill1' | 'skill2' | 'skill3'
 
@@ -113,18 +115,26 @@ function App() {
       return
     }
 
-    const sceneManager = new SceneManager(canvas, setStatus, matchHeroName, matchPace)
-    const resizeObserver = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect
-      sceneManager.resize(width, height)
+    let sceneManager: { dispose: () => void; resize: (w: number, h: number) => void } | null = null
+    let resizeObserver: ResizeObserver | null = null
+    let cancelled = false
+
+    import('./core/SceneManager').then(({ SceneManager }) => {
+      if (cancelled) return
+      const instance = new SceneManager(canvas, setStatus, matchHeroName, matchPace)
+      sceneManager = instance
+      resizeObserver = new ResizeObserver(([entry]) => {
+        const { width, height } = entry.contentRect
+        instance.resize(width, height)
+      })
+      resizeObserver.observe(frame)
+      instance.start()
     })
 
-    resizeObserver.observe(frame)
-    sceneManager.start()
-
     return () => {
-      resizeObserver.disconnect()
-      sceneManager.dispose()
+      cancelled = true
+      resizeObserver?.disconnect()
+      sceneManager?.dispose()
     }
   }, [matchHeroName, matchPace, matchKey])
 
@@ -311,7 +321,9 @@ function App() {
                 </header>
                 <div className="hero-select-main">
                   <div className="hero-preview-stage">
-                    <HeroPreview heroName={selectedHeroName} key={selectedHeroName} />
+                    <Suspense fallback={<div className="hero-preview-loading" aria-hidden="true" />}>
+                      <HeroPreview heroName={selectedHeroName} key={selectedHeroName} />
+                    </Suspense>
                     <div className="hero-preview-vignette" aria-hidden="true" />
                     <div className="hero-preview-caption">
                       <span className="hero-role-badge">{selectedHero.role}</span>

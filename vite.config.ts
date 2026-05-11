@@ -7,4 +7,18 @@ export default defineConfig({
   server: {
     host: true,
   },
+  build: {
+    target: 'es2022',
+    cssMinify: 'lightningcss',
+    sourcemap: false,
+    chunkSizeWarningLimit: 800,
+    rolldownOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules/three')) return 'three'
+          if (id.includes('node_modules/react')) return 'react'
+        },
+      },
+    },
+  },
 })

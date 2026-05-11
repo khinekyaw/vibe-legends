@@ -93,6 +93,22 @@
   height: 100%;
 }
 
+.hero-preview-loading {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.04), transparent 60%),
+    linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.06) 50%, transparent 70%);
+  background-size: 100% 100%, 200% 100%;
+  background-repeat: no-repeat;
+  animation: hero-preview-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes hero-preview-shimmer {
+  from { background-position: 0 0, -100% 0; }
+  to { background-position: 0 0, 100% 0; }
+}
+
 .hero-preview-frame canvas {
   width: 100%;
   height: 100%;
@@ -695,7 +711,7 @@
   position: absolute;
   z-index: 6;
   left: 50%;
-  top: 64px;
+  top: 100px;
   transform: translateX(-50%);
   padding: 10px 22px;
   display: grid;
@@ -746,7 +762,7 @@
   position: relative;
   display: grid;
   gap: 18px;
-  width: min(440px, 100%);
+  width: fit-content;
   padding: 32px 32px 26px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
