@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { createHeroFromModel, playHeroState } from '../entities/HeroModel'
 import { HERO_ASSETS } from '../core/sceneConfig'
+import { getRendererQuality } from '../core/deviceTier'
 
 type HeroPreviewProps = {
   heroName: string
@@ -27,14 +28,15 @@ export function HeroPreview({ heroName }: HeroPreviewProps) {
     camera.position.set(0, 1.45, 5.2)
     camera.lookAt(0, 0.82, 0)
 
+    const quality = getRendererQuality()
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: quality.antialias,
       alpha: true,
       canvas,
       powerPreference: 'high-performance',
     })
     renderer.setClearColor(0x000000, 0)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatioCap))
 
     const previewRoot = new THREE.Group()
     scene.add(previewRoot)

@@ -26,6 +26,7 @@ import {
   createSimpleBrawlMap,
 } from "../map/SimpleBrawlMap"
 import { DEFAULT_MATCH_PACE, getMatchPaceConfig, type MatchPace } from "./matchPace"
+import { getRendererQuality } from "./deviceTier"
 import {
   resolveAabbCollisions,
   type WorldCollider,
@@ -158,6 +159,7 @@ export class SceneManager {
   private readonly minionCombat = new Map<MinionInstance, MinionCombatState>()
   private readonly minions: MinionInstance[] = []
   private readonly objectiveCombat: Map<string, ObjectiveCombatState>
+  private readonly rendererQuality: ReturnType<typeof getRendererQuality>
   private readonly combatEffects = new CombatEffects()
   private rendererHeight = 1
   private rendererWidth = 1
@@ -222,17 +224,21 @@ export class SceneManager {
         ]
       }),
     )
+    const quality = getRendererQuality()
+    this.rendererQuality = quality
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: quality.antialias,
       canvas,
       powerPreference: "high-performance",
     })
     this.renderer.setClearColor(SKY_COLOR)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    this.renderer.shadowMap.enabled = true
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatioCap))
+    this.renderer.shadowMap.enabled = quality.shadowsEnabled
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.32
+    this.renderer.toneMapping = quality.highQualityToneMapping
+      ? THREE.ACESFilmicToneMapping
+      : THREE.LinearToneMapping
+    this.renderer.toneMappingExposure = quality.highQualityToneMapping ? 1.32 : 1.05
 
     this.camera = new THREE.PerspectiveCamera(16, 1, 0.1, MAP_WORLD_SIZE * 4)
     this.camera.position.copy(this.cameraOffset)
@@ -304,8 +310,11 @@ export class SceneManager {
 
     const keyLight = new THREE.DirectionalLight(0xe5f4ff, 3.25)
     keyLight.position.set(0, 12, 4)
-    keyLight.castShadow = true
-    keyLight.shadow.mapSize.set(2048, 2048)
+    keyLight.castShadow = this.rendererQuality.shadowsEnabled
+    keyLight.shadow.mapSize.set(
+      this.rendererQuality.shadowMapSize,
+      this.rendererQuality.shadowMapSize,
+    )
     keyLight.shadow.camera.left = -28
     keyLight.shadow.camera.right = 28
     keyLight.shadow.camera.top = 42

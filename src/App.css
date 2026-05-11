@@ -1166,6 +1166,25 @@
 }
 
 @media (pointer: coarse) {
+  /* Mobile perf: backdrop-filter blurs are expensive on phone GPUs. */
+  .minimap,
+  .match-scoreboard,
+  .skill-dock,
+  .hero-hud {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .skill-mask {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .hero-select-card,
+  .skill-button {
+    transition: none;
+  }
+
   .touch-controls {
     display: block;
   }

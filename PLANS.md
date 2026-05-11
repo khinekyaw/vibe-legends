@@ -1,4 +1,4 @@
-# Mobile Legend Clone — Build Plan
+# Vibe Legends — Build Plan
 
 > A phased roadmap from zero to a playable MOBA prototype on the web.
 > We start simple (rendering two characters) and layer complexity milestone by milestone.
