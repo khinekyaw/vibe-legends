@@ -43,10 +43,33 @@ Implemented:
 - First audio pass is wired with looping match BGM, hero basic attack / skill SFX for Alice, Ruby, and Layla, plus minion and tower attack SFX using supplied `.mp3` fallback assets.
 - `SceneManager.ts` has been partially split into focused modules for match roster setup, shared match types, scene math helpers, objective model loading, and HUD/minimap status projection.
 - Destroying the enemy nexus shows Victory. Destroying the player nexus shows Defeat.
+- Hero select screen has been redesigned: flat full-bleed layout (no card chrome), accent-color theming per hero (Layla blue, Alice purple, Ruby red), role badge, tagline, description, and inline skill chip preview. Layla is the default selection.
+- Match Pace toggle on the hero select screen (Normal / Quick targeting ~5 min) configured by a small `matchPace.ts` registry so new presets and balance knobs slot in without code churn.
+- Victory / Defeat screen redesigned as an interactive dialog: stats panel (match time, blue kills, red kills), accent-colored title with glow, and Rematch / Quit-to-Menu buttons. Rematch re-runs the scene with the same hero + pace.
+- Combat VFX upgraded across all skill primitives: projectiles get faceted gem cores with trailing cones and cross flares, bursts gain double rings and a vertical column, beams now have triple-layer halos, slashes have leading edge flares, vortex has 5 rings plus rising column and core. Animations use eased opacity falloff.
+- AOE skills now hit **every** enemy hero in the shape (forward box, radius, or near impact). Previously they only damaged the closest enemy. All 9 skills audited and fixed.
+- Animations no longer lock the hero. Heroes can move/attack/skill again after a short per-skill cast-lock window. Per-hero attack interval prevents animation-cancel exploits. Tunable via `castLockSeconds` and `attack.interval` in `HERO_KITS`.
+- Match balance pass for pacing:
+  - Hero damage growth bumped to +9.5% / level (from +6.5%).
+  - Respawn now scales +2s / min, cap raised to 50s (from 20s).
+  - Outer tower HP 2200 → 1500, inner 2400 → 1800, nexus 3600 → 2800.
+  - AI heroes now prioritize a sieging target (enemy tower in 9.5u) over distant minions, after clearing close threats. Lanes actually close.
+- Towers and nexus visually disappear and drop their colliders when destroyed; heroes/minions walk through the rubble. Destruction burst plays at the site.
+- Match HUD polish: bigger gradient minimap, gradient scoreboard with team-colored kill counts, layered skill dock with ready-state glow, gradient health/XP tracks, animated respawn pill, big glowing Victory/Defeat title.
+- Bottom-left HP/XP HUD removed; the respawn indicator centers at the top of screen during respawn.
+- Mobile and tablet support:
+  - Virtual joystick (with deadzone) and on-screen Attack button. Both communicate to `InputManager` via window events (`virtual-movement`, `virtual-attack`).
+  - Touch-sized skill dock with circular buttons and hidden Q/E/R labels under `(pointer: coarse)`.
+  - Landscape orientation guard with rotate-icon animation in portrait.
+  - Compact landscape layout for the hero select so it stays horizontal at short heights instead of stacking.
+- Deployment optimizations: vendor chunks split `three` (156KB gzip) and `react` (60KB gzip) from app code for caching. `SceneManager` and `HeroPreview` are lazy-loaded — first paint ships ~66KB gzip JS + CSS instead of 236KB. Build targets `es2022`, sourcemaps off, CSS via lightningcss. Vite dev server bound to `0.0.0.0` for LAN testing. `index.html` gained `theme-color`, `color-scheme`, mobile-web-app meta tags, and viewport-fit cover.
 
 Next:
-- Tune minion/hero AI priorities, wave timing, attack timing, and combat balance after playtesting.
-- Add kill feed, HUD polish, additional UI sounds, and broader audio mixing controls.
+- Asset compression: Draco for GLB models (21MB), KTX2/Basis for textures (8.8MB), Opus re-encoding for audio (6.7MB). Highest deploy-size win remaining.
+- Kill feed and broader UI sounds (level up, kill, objective destroyed).
+- Audio mixing controls (per-bus volume sliders, mute toggle).
+- Mobile UX: on-canvas tap-to-move accuracy on small screens; consider second joystick for aim/attack-direction.
+- Per-hero attack/skill cast-lock and interval tuning from playtesting.
 
 Deferred:
 - Multiplayer, matchmaking, authoritative server state, network interpolation, and lag compensation.
@@ -346,5 +369,15 @@ Optional later audio:
 | M18 | Simple enemy AI | Local Match | 🟧 High |
 | M19 | Minimap and kill feed polish | Polish | 🟧 High |
 | M20 | Audio system | Polish | 🟨 Medium |
+| M21 | Hero select redesign + match pace toggle | Polish | 🟨 Medium |
+| M22 | Victory/Defeat dialog with rematch and quit | Polish | ⬜ Low |
+| M23 | Combat VFX upgrade across all skill primitives | Polish | 🟨 Medium |
+| M24 | AOE multi-target fix for all hero skills | Combat | ⬜ Low |
+| M25 | Animation cancel + per-hero cast lock and attack interval | Combat | 🟨 Medium |
+| M26 | Balance pass: damage growth, respawn scaling, tower HP, AI siege | Local Match | 🟨 Medium |
+| M27 | Tower / nexus destruction visuals and collider removal | Local Match | ⬜ Low |
+| M28 | Match HUD polish (minimap, scoreboard, skill dock, respawn) | Polish | 🟨 Medium |
+| M29 | Mobile / tablet controls (virtual joystick, attack button, orientation guard) | Polish | 🟧 High |
+| M30 | Deployment build optimization (vendor chunks, lazy scene, meta tags) | Deploy | 🟨 Medium |
 
 ---
