@@ -38,6 +38,10 @@ export type RendererQuality = {
   shadowMapSize: number
   /** When false, use Linear / NoToneMapping for cheaper shaders. */
   highQualityToneMapping: boolean
+  /** Minimum ms between rendered frames (0 = uncapped). */
+  frameIntervalMs: number
+  /** Minimum ms between React HUD status emits. */
+  statusEmitIntervalMs: number
 }
 
 export function getRendererQuality(): RendererQuality {
@@ -48,6 +52,8 @@ export function getRendererQuality(): RendererQuality {
       shadowsEnabled: false,
       shadowMapSize: 1024,
       highQualityToneMapping: false,
+      frameIntervalMs: 33,
+      statusEmitIntervalMs: 100,
     }
   }
   return {
@@ -56,5 +62,7 @@ export function getRendererQuality(): RendererQuality {
     shadowsEnabled: true,
     shadowMapSize: 2048,
     highQualityToneMapping: true,
+    frameIntervalMs: 0,
+    statusEmitIntervalMs: 33,
   }
 }

@@ -67,7 +67,7 @@ export class InputManager {
   }
 
   getAttackCommand() {
-    const shouldAttack = this.attackQueued
+    const shouldAttack = this.attackQueued || this.pressedKeys.has('Space')
     this.attackQueued = false
     return shouldAttack
   }

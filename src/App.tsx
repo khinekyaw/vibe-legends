@@ -254,6 +254,26 @@ function App() {
                   Respawn {Math.ceil(status.respawnSeconds)}
                 </div>
               )}
+              <button
+                aria-label="Toggle fullscreen"
+                className="fullscreen-button"
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  toggleFullscreen()
+                }}
+                type="button"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path
+                    d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.2"
+                  />
+                </svg>
+              </button>
               <div className="touch-controls" aria-hidden="false">
                 <VirtualJoystick />
                 <button
@@ -452,6 +472,42 @@ function dispatchSkillCommand(slot: SkillSlot) {
 
 function dispatchAttackCommand() {
   window.dispatchEvent(new CustomEvent('virtual-attack'))
+}
+
+function toggleFullscreen() {
+  const doc = document as Document & {
+    webkitExitFullscreen?: () => Promise<void>
+    webkitFullscreenElement?: Element | null
+    msExitFullscreen?: () => Promise<void>
+  }
+  const target = (document.querySelector('.viewport') ??
+    document.documentElement) as HTMLElement & {
+    webkitRequestFullscreen?: (options?: unknown) => Promise<void>
+    msRequestFullscreen?: () => Promise<void>
+  }
+  const isFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement
+  const onErr = () => undefined
+  if (isFullscreen) {
+    const exit =
+      doc.exitFullscreen?.bind(doc) ??
+      doc.webkitExitFullscreen?.bind(doc) ??
+      doc.msExitFullscreen?.bind(doc)
+    exit?.()?.catch?.(onErr)
+    return
+  }
+  const request =
+    target.requestFullscreen?.bind(target) ??
+    target.webkitRequestFullscreen?.bind(target) ??
+    target.msRequestFullscreen?.bind(target)
+  const result = request?.()
+  if (result && typeof result.catch === 'function') {
+    result.catch(onErr)
+  }
+  // Best-effort landscape lock on Android after entering fullscreen.
+  const orientation = (screen as Screen & {
+    orientation?: { lock?: (orientation: string) => Promise<void> }
+  }).orientation
+  orientation?.lock?.('landscape').catch(onErr)
 }
 
 export default App

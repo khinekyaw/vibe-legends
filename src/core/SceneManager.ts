@@ -160,6 +160,8 @@ export class SceneManager {
   private readonly minions: MinionInstance[] = []
   private readonly objectiveCombat: Map<string, ObjectiveCombatState>
   private readonly rendererQuality: ReturnType<typeof getRendererQuality>
+  private lastRenderAtMs = 0
+  private lastStatusEmitAtMs = 0
   private readonly combatEffects = new CombatEffects()
   private rendererHeight = 1
   private rendererWidth = 1
@@ -469,6 +471,17 @@ export class SceneManager {
   }
 
   private animate = () => {
+    this.animationFrame = requestAnimationFrame(this.animate)
+
+    const frameInterval = this.rendererQuality.frameIntervalMs
+    if (frameInterval > 0) {
+      const nowMs = performance.now()
+      if (nowMs - this.lastRenderAtMs < frameInterval) {
+        return
+      }
+      this.lastRenderAtMs = nowMs
+    }
+
     const delta = this.clock.getDelta()
     this.updateCombatTimers()
     this.updateMinionWaves()
@@ -486,10 +499,9 @@ export class SceneManager {
       this.pinMinionToAnchor(minion)
     })
     this.updateCamera(delta)
-    this.emitStatus("model")
+    this.maybeEmitStatus()
 
     this.renderer.render(this.scene, this.camera)
-    this.animationFrame = requestAnimationFrame(this.animate)
   }
 
   private pinHeroToAnchor(hero: HeroInstance) {
@@ -2211,7 +2223,20 @@ export class SceneManager {
     return inputVector.lengthSq() > 0 || hero.moveTarget ? "run" : "idle"
   }
 
+  private maybeEmitStatus() {
+    const interval = this.rendererQuality.statusEmitIntervalMs
+    if (interval > 0) {
+      const nowMs = performance.now()
+      if (nowMs - this.lastStatusEmitAtMs < interval) {
+        return
+      }
+      this.lastStatusEmitAtMs = nowMs
+    }
+    this.emitStatus("model")
+  }
+
   private emitStatus(mode: SceneStatus["mode"]) {
+    this.lastStatusEmitAtMs = performance.now()
     const nowSeconds = performance.now() / 1000
 
     this.onStatusChange(
